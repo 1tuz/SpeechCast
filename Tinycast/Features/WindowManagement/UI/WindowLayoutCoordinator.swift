@@ -56,6 +56,10 @@ final class WindowLayoutCoordinator {
 
     func runWindowLayout(id: UUID) {
         guard settings.windowManagementEnabled, let layout = store.layout(id: id) else { return }
+        guard case .native = SharedWindowManagerBridge.resolve() else {
+            core.showMessage("Saved pixel layouts are disabled while an external tiler owns the windows", tone: .neutral)
+            return
+        }
         autoApplyRun?.cancel()
         // Never restoreFocus: an opened app activates itself, and handing focus back races that.
         if paletteCoordinator.isVisible { paletteCoordinator.hidePalette(restoreFocus: false) }
@@ -71,6 +75,14 @@ final class WindowLayoutCoordinator {
             self.run = nil
             self.runID = nil
         }
+    }
+
+    func suspendRunsForSharedManager() {
+        run?.cancel()
+        run = nil
+        runID = nil
+        autoApplyRun?.cancel()
+        autoApplyRun = nil
     }
 
     func prepareForTermination() {
@@ -102,6 +114,7 @@ final class WindowLayoutCoordinator {
     }
 
     private func applyLayoutForLaunch(bundleID: String?) {
+        guard case .native = SharedWindowManagerBridge.resolve() else { return }
         guard settings.windowManagementEnabled, run == nil, autoApplyRun == nil,
             Permissions.isAccessibilityTrusted(), let bundleID,
             let layout = store.layouts.first(where: { $0.autoApplyBundleID == bundleID })

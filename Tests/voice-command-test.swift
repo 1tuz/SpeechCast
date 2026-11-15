@@ -13,7 +13,11 @@ struct VoiceCommandTest {
             .init(kind: .application, id: "jira", name: "Jira", aliases: ["Джира"]),
             .init(kind: .customCommand, id: "clear", name: "Очистка кэша"),
             .init(kind: .shortcut, id: "work", name: "Рабочее окружение"),
-            .init(kind: .quicklink, id: "link", name: "Документация")
+            .init(kind: .quicklink, id: "link", name: "Документация"),
+            .init(kind: .extensionCommand, id: "extension:issues/find", name: "Find Issue",
+                  aliases: ["найди задачу", "поиск задач"]),
+            .init(kind: .extensionCommand, id: "extension:issues/create", name: "Create Issue",
+                  aliases: ["создай задачу"])
         ]
         var tested = 0
         func expect(_ text: String, _ expected: P.Resolution, line: Int = #line) {
@@ -45,6 +49,15 @@ struct VoiceCommandTest {
         expect("Запусти сценарий Рабочее окружение", .action(.target(.shortcut, "work")))
         expect("Выполни команду Очистка кэша", .action(.target(.customCommand, "clear")))
         expect("Открой ссылку Документация", .action(.target(.quicklink, "link")))
+        expect("Запусти расширение Find Issue", .action(.target(.extensionCommand, "extension:issues/find")))
+        expect("Запусти расширение Find Issue с текстом DEV-123",
+               .action(.extensionInvocation("extension:issues/find", argument: "DEV-123")))
+        expect("Найди задачу DEV-123",
+               .action(.extensionInvocation("extension:issues/find", argument: "DEV-123")))
+        expect("Создай задачу", .action(.target(.extensionCommand, "extension:issues/create")))
+        expect("Отправь окно на рабочий стол 3", .action(.workspace(index: 3, moveWindow: true)))
+        expect("Переключись на рабочий стол 3", .action(.workspace(index: 3, moveWindow: false)))
+        expect("Отправь окно на рабочий стол 99", .unknown("Номер рабочего стола должен быть от 1 до 20"))
         expect("Поставь окно справа", .action(.window("right-half")))
         expect("Перемести окно вправо", .action(.window("move-right")))
         expect("Отправь окно на следующий монитор", .action(.window("next-display")))

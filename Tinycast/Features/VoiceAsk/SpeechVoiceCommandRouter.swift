@@ -17,6 +17,9 @@ enum SpeechVoiceCommandRouter {
             // Never guess if two applications or actions have similarly plausible names.
             core.voiceCommandCatalogWindow.showChoices(targets)
             return true
+        case .action(.extensionInvocation(let id, let argument)):
+            runExtension(id: id, spokenText: argument, core: core)
+            return true
         case .action(.aiPrompt(let trigger, let prompt)):
             // The trigger entry decides the model; a missing entry falls back to the default.
             let entry = AIVoiceTriggerStore.triggers().first {
@@ -44,6 +47,9 @@ enum SpeechVoiceCommandRouter {
             case .customCommand: kind = .customCommand
             case .windowLayout, .projectWorkspace: kind = .layout
             case .windowRoom: kind = .room
+            case .extensionCommand:
+                guard core.settings.extensionsEnabled else { continue }
+                kind = .extensionCommand
             default: continue
             }
             // Two package installations may legitimately share a display name.
@@ -113,6 +119,10 @@ enum SpeechVoiceCommandRouter {
                 return
             }
             core.windowCommandCoordinator.runWindowCommand(id: command)
+        case .workspace(let index, let moveWindow):
+            core.windowCommandCoordinator.runWorkspace(number: index, moveWindow: moveWindow)
+        case .extensionInvocation(let id, let argument):
+            runExtension(id: id, spokenText: argument, core: core)
         case .system(let id):
             guard let command = SystemAction.ID(rawValue: id) else { return }
             core.systemActionCoordinator.runSystemAction(id: command)
@@ -214,6 +224,10 @@ enum SpeechVoiceCommandRouter {
                 core.showMessage("\(entry.name) не запущено", tone: .neutral)
             }
         case .target(let kind, let id):
+            if kind == .extensionCommand {
+                runExtension(id: id, spokenText: nil, core: core)
+                return
+            }
             if kind == .workflow {
                 guard let workflowID = UUID(uuidString: id), core.workflowCoordinator.allows(workflowID)
                 else { return }
@@ -235,6 +249,39 @@ enum SpeechVoiceCommandRouter {
             } else {
                 core.launcherCoordinator.launch(entry)
             }
+        }
+    }
+
+    /// Raycast bundles can execute arbitrary JavaScript even in view mode: every
+    /// spoken launch requires confirmation, with no implicit shell execution.
+    private static func runExtension(id: String, spokenText: String?, core: AppCore) {
+        guard core.settings.extensionsEnabled,
+              let entry = core.appIndex.apps.first(where: { $0.id == id && $0.kind == .extensionCommand }),
+              core.visibility.isVisible(entry) else {
+            core.showMessage("Расширение недоступно или выключено", tone: .neutral)
+            return
+        }
+        let fields = core.extensionCoordinator.commandArguments(for: entry) ?? []
+        var arguments: [String: String] = [:]
+        if let spokenText {
+            // Only a single, declared, non-secret text field is safe to populate
+            // without inspecting a third-party extension's own form.
+            guard fields.count == 1, fields[0].type == "text" else {
+                core.showMessage("Это расширение не принимает один текстовый аргумент", tone: .neutral)
+                return
+            }
+            arguments[fields[0].name] = spokenText
+        } else if fields.contains(where: \.required) {
+            core.showMessage("Укажи аргументы команды в поиске SpeechCast", tone: .neutral)
+            core.paletteCoordinator.showPalette(mode: .launcher, seeding: entry.name)
+            return
+        }
+        Task { @MainActor in
+            guard await core.confirm(
+                title: "Запустить расширение?", message: entry.name,
+                symbol: "puzzlepiece.extension", confirmTitle: "Запустить"
+            ) else { return }
+            core.extensionCoordinator.runExtensionCommand(entry, arguments: arguments)
         }
     }
 }

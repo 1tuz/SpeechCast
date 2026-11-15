@@ -73,6 +73,15 @@ final class RoomCoordinator {
     func applyEnabled() {
         applyRoomsPresence()
         guard !settings.windowManagementEnabled else { return }
+        suspendForSharedManager()
+    }
+
+    /// Recover windows previously parked by Rooms when switching to a tiler.
+    /// Await a cancelled in-flight enter before restoring its windows.
+    func suspendForSharedManager() {
+        work?.cancel()
+        isEntering = false
+        preview.hide()
         if palette.mode == .rooms || palette.mode == .roomWindows { palette.prepare(mode: .launcher) }
         let hidden = hiddenByRooms
         hiddenByRooms = []
@@ -209,6 +218,10 @@ final class RoomCoordinator {
 
     func enterRoom(id: UUID) {
         guard settings.windowManagementEnabled, let room = store.room(id: id) else { return }
+        guard case .native = SharedWindowManagerBridge.resolve() else {
+            core.showMessage("Rooms cannot rearrange externally tiled windows; select native mode", tone: .neutral)
+            return
+        }
         // The preview holds while the windows move in under it, then fades.
         isEntering = preview.isShowing
         if paletteCoordinator.isVisible { paletteCoordinator.hidePalette(restoreFocus: false) }

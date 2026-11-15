@@ -5,7 +5,7 @@ import Foundation
 enum SpeechVoiceCommandParser {
     struct Target: Equatable, Sendable {
         enum Kind: String, Equatable, Sendable {
-            case application, quicklink, shortcut, customCommand, workflow, layout, room
+            case application, quicklink, shortcut, customCommand, workflow, layout, room, extensionCommand
         }
         let kind: Kind
         let id: String
@@ -21,6 +21,9 @@ enum SpeechVoiceCommandParser {
         case builtIn(String, query: String? = nil)
         case focus(FocusCommand)
         case target(Target.Kind, String)
+        /// A Raycast command plus one spoken text parameter, when explicitly provided.
+        case extensionInvocation(String, argument: String)
+        case workspace(index: Int, moveWindow: Bool)
         /// Quits the application resolved by name ("закрой телеграм").
         case quitApp(String)
         /// Quits the application the previous command resolved to ("закрой его").
@@ -285,6 +288,9 @@ enum SpeechVoiceCommandParser {
 
     // More specific prefixes must win before the generic open/run verbs.
     private static let namedRules: [NamedRule] = [
+        .init(prefix: "выполни команду расширения", kinds: [.extensionCommand]),
+        .init(prefix: "запусти расширение", kinds: [.extensionCommand]),
+        .init(prefix: "открой расширение", kinds: [.extensionCommand]),
         .init(prefix: "выполни пользовательскую команду", kinds: [.customCommand]),
         .init(prefix: "выполни команду", kinds: [.customCommand]),
         .init(prefix: "запусти команду", kinds: [.customCommand]),
@@ -313,6 +319,7 @@ enum SpeechVoiceCommandParser {
         case .quicklink: "открой ссылку"
         case .shortcut: "запусти быструю команду"
         case .customCommand: "выполни команду"
+        case .extensionCommand: "запусти расширение"
         case .workflow: "запусти сценарий"
         case .layout: "примени раскладку"
         case .room: "открой комнату"
@@ -331,6 +338,7 @@ enum SpeechVoiceCommandParser {
         case .quicklink: "Quicklinks"
         case .shortcut: "Apple Shortcuts"
         case .customCommand: "Пользовательские команды"
+        case .extensionCommand: "Расширения Raycast"
         case .workflow: "Сценарии"
         case .layout: "Раскладки окон"
         case .room: "Комнаты окон"
@@ -340,6 +348,7 @@ enum SpeechVoiceCommandParser {
         case .shortcut: "shortcuts"
         case .quicklink: "quicklinks"
         case .customCommand: "customCommands"
+        case .extensionCommand: "extensions"
         case .workflow: "workflows"
         case .application: nil
         }
@@ -372,7 +381,10 @@ enum SpeechVoiceCommandParser {
             .init(section: "Фокус", title: "Блокировка и исключения", phrases: [
                 "заблокируй приложение Telegram", "заблокируй сайт youtube.com",
                 "разреши сайт youtube.com на 5 минут"
-            ], feature: nil)
+            ], feature: nil),
+            .init(section: "Окна", title: "Рабочие столы внешнего менеджера", phrases: [
+                "отправь окно на рабочий стол 3", "переключись на рабочий стол 3"
+            ], feature: "windows")
         ]
     }
 
@@ -454,6 +466,24 @@ enum SpeechVoiceCommandParser {
                 return .action(.builtIn("searchNotes", query: searchText(after: prefix, in: original)))
             }
         }
+        // Numbered workspaces are deliberately scoped to external managers.
+        for (prefix, moving) in [
+            ("перемести окно на рабочий стол", true),
+            ("отправь окно на рабочий стол", true),
+            ("переключись на рабочий стол", false)
+        ] {
+            if let value = suffix(after: prefix, in: phrase) {
+                guard let index = Int(value), (1...20).contains(index) else {
+                    return .unknown("Номер рабочего стола должен быть от 1 до 20")
+                }
+                return .action(.workspace(index: index, moveWindow: moving))
+            }
+        }
+        // Explicitly configured multiword voice aliases for Raycast commands may
+        // accept an argument after the alias: "найди задачу DEV-123".
+        if let result = resolveExtensionAlias(original: original, phrase: phrase, targets: targets) {
+            return result
+        }
         // A generic fuzzy lookup: whatever the palette itself would find for this query.
         for prefix in ["найди", "поиск", "поищи"] {
             if let rest = suffix(after: prefix, in: phrase), !rest.isEmpty {
@@ -465,6 +495,9 @@ enum SpeechVoiceCommandParser {
             guard let rest = suffix(after: rule.prefix, in: phrase) else { continue }
             guard !rest.isEmpty else { return .unknown("Назови объект команды") }
             let rawName = tail(of: original, skipping: rule.prefix.split(separator: " ").count)
+            if rule.kinds == [.extensionCommand] {
+                return resolveExtensionInvocation(rawName, targets: targets)
+            }
             return resolveName(rawName, kinds: rule.kinds, targets: targets, quits: rule.closes)
         }
 
@@ -486,9 +519,60 @@ enum SpeechVoiceCommandParser {
             guard fuzzyPrefix(rule.prefix, in: phrase) else { continue }
             let name = tail(of: original, skipping: rule.prefix.split(separator: " ").count)
             guard !name.isEmpty else { return .unknown("Назови объект команды") }
+            if rule.kinds == [.extensionCommand] {
+                return resolveExtensionInvocation(name, targets: targets)
+            }
             return resolveName(name, kinds: rule.kinds, targets: targets, quits: rule.closes)
         }
         return .notCommand
+    }
+
+    /// Resolve the exact extension name before assigning the trailing text.
+    /// Never guess which of several manifest arguments a spoken value belongs to.
+    private static func resolveExtensionInvocation(_ original: String, targets: [Target]) -> Resolution {
+        for marker in [" с текстом ", " с аргументом ", " с параметром "] {
+            guard let split = original.range(of: marker, options: .caseInsensitive) else { continue }
+            let name = String(original[..<split.lowerBound]).trimmingCharacters(in: .whitespaces)
+            let value = String(original[split.upperBound...])
+                .trimmingCharacters(in: CharacterSet(charactersIn: ".!?…,;: "))
+            guard !value.isEmpty else { return .unknown("Назови текстовый аргумент") }
+            let resolved = resolveName(name, kinds: [.extensionCommand], targets: targets)
+            if case .action(.target(.extensionCommand, let id)) = resolved {
+                return .action(.extensionInvocation(id, argument: value))
+            }
+            return resolved
+        }
+        return resolveName(original, kinds: [.extensionCommand], targets: targets)
+    }
+
+    /// An explicit multiword alias can be a natural phrase such as "найди задачу".
+    /// We do not interpret arbitrary app names or one-word fuzzy matches as actions.
+    private static func resolveExtensionAlias(
+        original: String, phrase: String, targets: [Target]
+    ) -> Resolution? {
+        var candidates: [(target: Target, argument: String?, words: Int)] = []
+        for target in targets where target.kind == .extensionCommand {
+            for alias in target.aliases {
+                let key = normalize(alias)
+                let tokens = key.split(separator: " ")
+                guard tokens.count >= 2, let first = tokens.first,
+                      ["найди", "создай", "покажи", "открой", "запусти", "выполни"].contains(String(first)),
+                      phrase == key || phrase.hasPrefix(key + " ") else { continue }
+                let tailText = tail(of: original, skipping: tokens.count)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: ".!?…,;: "))
+                candidates.append((target, tailText.isEmpty ? nil : tailText, tokens.count))
+            }
+        }
+        guard let longest = candidates.map(\.words).max() else { return nil }
+        let matching = candidates.filter { $0.words == longest }
+        let unique = Dictionary(matching.map { ($0.target.id, $0) }, uniquingKeysWith: { first, _ in first })
+        guard unique.count == 1, let candidate = unique.values.first else {
+            return .ambiguous(unique.values.map(\.target))
+        }
+        if let argument = candidate.argument {
+            return .action(.extensionInvocation(candidate.target.id, argument: argument))
+        }
+        return .action(.target(.extensionCommand, candidate.target.id))
     }
 
     /// No edit distance on the target here: that is handled separately by resolveName.

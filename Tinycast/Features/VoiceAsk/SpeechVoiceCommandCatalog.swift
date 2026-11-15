@@ -58,7 +58,7 @@ private struct SpeechVoiceCommandCatalogView: View {
     private let sections = [
         "Справка", "Приложения", "Окна", "Раскладки окон", "Комнаты окон", "Система",
         "Поиск и данные", "Заметки", "Календарь", "Apple Shortcuts", "Сценарии",
-        "Пользовательские команды", "Quicklinks"
+        "Пользовательские команды", "Расширения Raycast", "Quicklinks"
     ]
 
     private var allItems: [SpeechVoiceCommandParser.CatalogItem] {
@@ -86,6 +86,7 @@ private struct SpeechVoiceCommandCatalogView: View {
         case "shortcuts": return core.settings.appleShortcutsEnabled
         case "quicklinks": return core.settings.quicklinksEnabled
         case "customCommands": return core.settings.customCommandsEnabled
+        case "extensions": return core.settings.extensionsEnabled
         case "workflows": return core.settings.workflowsEnabled
         default: return true
         }

@@ -7,6 +7,8 @@ struct WindowManagementSettingsView: View {
     @State private var pendingDeletion: WindowLayout?
     @State private var customSizeEdit: CustomWindowSizeEditRequest?
     @State private var chosenPreset: WindowShortcutPreset?
+    @AppStorage(SharedWindowManagerSelection.defaultsKey)
+    private var sharedManagerMode = SharedWindowManagerSelection.automatic.rawValue
 
     var body: some View {
         @Bindable var settings = settings
@@ -37,6 +39,13 @@ struct WindowManagementSettingsView: View {
         }
         .formStyle(.grouped)
         .settingsScrollTarget(.windowManagement)
+        .onChange(of: sharedManagerMode) { _, _ in
+            guard case .native = SharedWindowManagerBridge.resolve() else {
+                core.windowLayoutCoordinator.suspendRunsForSharedManager()
+                core.roomCoordinator.suspendForSharedManager()
+                return
+            }
+        }
         .settingsEditorPanel(item: $editor) { request in
             WindowLayoutEditorPanel(request: request)
         }
@@ -62,6 +71,16 @@ struct WindowManagementSettingsView: View {
     private var options: some View {
         @Bindable var settings = settings
         return Section {
+            Picker("Window manager", selection: $sharedManagerMode) {
+                ForEach(SharedWindowManagerSelection.allCases) { manager in
+                    Text(manager.title).tag(manager.rawValue)
+                }
+            }
+            Text("Automatic follows StableBar's configured AeroSpace or yabai workspace source. "
+                 + "Tiled windows are changed through that manager; custom pixel layouts and Rooms "
+                 + "are limited to native mode. Floating windows keep SpeechCast sizing.")
+                .font(.caption).foregroundStyle(.secondary)
+
             Picker(selection: $settings.windowCycle) {
                 ForEach(WindowCycle.allCases) { cycle in
                     Text(cycle.title).tag(cycle)
