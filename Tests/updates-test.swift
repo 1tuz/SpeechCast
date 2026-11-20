@@ -25,12 +25,13 @@ struct UpdatesTests {
         picksTheDmgThisMacCanRun()
         rejectsUnusableFeeds()
         offersOnlyWhatIsWorthInstalling()
-        pinsTheDeveloperIDRequirement()
+        pinsTheSpeechCastCertificate()
         keepsOnlyTheChangelog()
         laysOutTheChangelog()
         linksMentionsAndPullRequests()
         blocksWhileBusy()
-        acceptsSpeechCastDmgAssets()
+        betaAdvancesToStable()
+        restrictsAssetURLs()
 
         print("\(passes) passed, \(failures) failed")
         if failures > 0 { exit(1) }
@@ -52,7 +53,9 @@ struct UpdatesTests {
         expect(AppVersion("0.2.x") == nil, "rejects a non-numeric field")
         expect(AppVersion("0.2.-1") == nil, "rejects a signed field")
         expect(AppVersion("0.2.0-alpha.1") == nil, "rejects a channel that never ships")
-        expect(AppVersion("0.2.0-beta") == nil, "rejects a beta with no counter")
+        expect(AppVersion("v0.11.1-beta")?.description == "0.11.1-beta", "reads the historical unnumbered beta")
+        expect(AppVersion("0.11.1-beta")! < AppVersion("0.11.1-beta.1")!, "unnumbered beta precedes beta.1")
+        expect(AppVersion("0.11.1-beta.1")! < AppVersion("0.11.1")!, "stable follows its beta")
         expect(AppVersion("0.2.0-beta.x") == nil, "rejects a non-numeric beta counter")
         expect(AppVersion("") == nil, "rejects an empty string")
         expect(AppVersion("nightly") == nil, "rejects a name")
@@ -104,21 +107,101 @@ struct UpdatesTests {
         let stable = ReleaseChannel(bundleID: "com.tinycast.app")
         let legacyBeta = ReleaseChannel(bundleID: "com.tinycast.app.beta")
         let dev = ReleaseChannel(bundleID: "com.tinycast.app.dev")
+        guard let runningBeta = AppVersion("0.11.1-beta.1") else {
+            fatalError("the beta fixture version must parse")
+        }
+        let beta = ReleaseChannel(bundleID: "com.tinycast.app", runningVersion: runningBeta)
 
         expect(stable == .stable, "the shipping bundle id is the stable channel")
+        expect(beta == .beta, "a running beta puts the app on the beta channel")
+        expect(
+            ReleaseChannel(bundleID: "com.tinycast.app", runningVersion: AppVersion("0.12.0"))
+                == .stable,
+            "a running stable version is the stable channel")
+        expect(
+            ReleaseChannel(bundleID: "com.tinycast.app", runningVersion: nil) == .stable,
+            "a versionless shipping bundle reads as stable")
         expect(legacyBeta == .development, "the retired beta bundle id no longer updates")
         expect(dev == .development, "the dev bundle id is a local build")
         expect(ReleaseChannel(bundleID: nil) == .development, "a missing bundle id never updates")
 
         expect(stable.updatesItself, "the shipped app updates itself")
+        expect(beta.updatesItself, "a shipped beta updates itself too")
         expect(!dev.updatesItself, "a local build does not update itself")
 
         expect(stable.accepts(prerelease: false), "stable takes releases")
         expect(!stable.accepts(prerelease: true), "stable never takes a prerelease")
+        expect(beta.accepts(prerelease: true), "beta takes the prerelease stream")
+        expect(
+            beta.accepts(prerelease: false),
+            "and takes the stable release of its own version, so beta advances to stable")
         expect(
             !dev.accepts(prerelease: true) && !dev.accepts(prerelease: false),
             "a local build accepts nothing at all")
     }
+
+    /// A beta run can move to the stable release of the same triple — the whole point of
+    /// keeping the bundle id across channels.
+    static func betaAdvancesToStable() {
+        let body = feed(
+            entry(tag: "v0.11.0", prerelease: false),
+            entry(tag: "v0.11.1", prerelease: false),
+            entry(tag: "v0.11.1-beta.1", prerelease: true))
+        guard let running = AppVersion("0.11.1-beta.1") else {
+            fatalError("the running beta must parse")
+        }
+        let offer = ReleaseFeed.newest(from: body, channel: .beta, architecture: .appleSilicon)
+        expect(offer?.version == AppVersion("0.11.1"), "the beta channel sees the stable release")
+        expect(
+            ReleaseFeed.offer(offer, running: running, skipped: nil)?.version
+                == AppVersion("0.11.1"),
+            "and offers it over the running beta")
+        // The stable channel still ignores the beta it cannot use.
+        expect(
+            ReleaseFeed.newest(from: body, channel: .stable, architecture: .appleSilicon)?.version
+                == AppVersion("0.11.1"),
+            "stable keeps taking the newest release only")
+    }
+
+    /// The feed is the only place a foreign URL can enter the updater, so it is filtered there.
+    static func restrictsAssetURLs() {
+        let repository = ReleaseFeed.repository
+        expect(
+            ReleaseFeed.acceptsAssetURL(
+                URL(string: "https://github.com/\(repository)/releases/download/v1/SpeechCast-1.dmg")!),
+            "the repository's own download URL is accepted")
+        expect(
+            ReleaseFeed.acceptsAssetURL(
+                URL(string: "https://objects.githubusercontent.com/some-bucket/SpeechCast-1.dmg")!),
+            "GitHub's release CDN is accepted — a redirect lands there")
+        expect(
+            ReleaseFeed.acceptsAssetURL(
+                URL(string: "https://release-assets.githubusercontent.com/x/SpeechCast-1.dmg")!),
+            "the alternate release CDN host is accepted")
+
+        expect(
+            !ReleaseFeed.acceptsAssetURL(URL(string: "https://example.com/SpeechCast.dmg")!),
+            "a foreign host is refused")
+        expect(
+            !ReleaseFeed.acceptsAssetURL(
+                URL(string: "https://github.com/other/repo/releases/download/v1/SpeechCast.dmg")!),
+            "another repository's asset is refused")
+        expect(
+            !ReleaseFeed.acceptsAssetURL(
+                URL(string: "https://github.com/\(repository)/releases/tag/v1")!),
+            "a non-download path on github.com is refused")
+        expect(
+            !ReleaseFeed.acceptsAssetURL(
+                URL(string: "http://github.com/\(repository)/releases/download/v1/a.dmg")!),
+            "plain http is refused")
+        expect(
+            !ReleaseFeed.acceptsAssetURL(URL(string: "file:///tmp/SpeechCast.dmg")!),
+            "a file URL masquerading as an asset is refused")
+        expect(
+            ReleaseFeed.repository == "1tuz/SpeechCast",
+            "the feed points at the current SpeechCast repository")
+    }
+
 
     // MARK: - ReleaseFeed
 
@@ -301,39 +384,22 @@ struct UpdatesTests {
         Built from 419a5b4. [Full changelog](https://example.invalid/compare)
         """
 
-    /// A malformed string makes `satisfiesDeveloperID` answer false for every build, silently.
-    static func pinsTheDeveloperIDRequirement() {
-        var requirement: SecRequirement?
-        let status = SecRequirementCreateWithString(
-            BundleSignature.developerID as CFString, [], &requirement)
+    /// The release trust root is a fixed certificate digest, not an Apple team requirement.
+    static func pinsTheSpeechCastCertificate() {
         expect(
-            status == errSecSuccess && requirement != nil,
-            "the pinned Developer ID requirement still compiles as a SecRequirement")
-
-        // Without the anchor, any self-signed certificate claiming the same OU would satisfy it.
+            BundleSignature.pinnedCertificateSHA256 == "A0AA9BCD7AFBC13A3CF4B16CAC7B84A0632816143F9C9D217DF9757B8400FD62",
+            "the updater pins the published SpeechCast certificate")
         expect(
-            BundleSignature.developerID.hasPrefix("anchor apple generic and "),
-            "the requirement is anchored to Apple's chain, not just to a team string")
-        // The bare anchor is a real requirement too: it accepts every Apple-signed code on the
-        // machine. What we pin must be strictly more than that.
+            BundleSignature.pinnedCertificateSHA256.count == 64
+                && BundleSignature.pinnedCertificateSHA256.allSatisfy(\.isHexDigit),
+            "the certificate pin is a complete SHA256 digest")
         expect(
-            BundleSignature.developerID != "anchor apple generic",
-            "the requirement is not just Apple's public anchor, which accepts any Apple-signed app")
-        expect(
-            BundleSignature.developerID.contains("certificate leaf[subject.OU] = \"J656U8XZ93\""),
-            "the requirement pins team J656U8XZ93, not a certificate a renewal or rename replaces")
-        expect(
-            BundleSignature.developerID.contains("field.1.2.840.113635.100.6.2.6"),
-            "the chain runs through the Developer ID Certification Authority intermediate")
-        expect(
-            BundleSignature.developerID.contains("field.1.2.840.113635.100.6.1.13"),
-            "the leaf is a Developer ID Application certificate specifically")
-
-        // A signature alone is not the release identity: only the shipping bundle id self-updates.
+            BundleSignature.expectedBundleIdentifier == "com.tinycast.app",
+            "the updater keeps the stable public bundle identifier")
         expect(
             ReleaseChannel(bundleID: "com.tinycast.app") == .stable
                 && ReleaseChannel(bundleID: "com.tinycast.app.dev") == .development,
-            "the release store serves the com.tinycast.app bundle only")
+            "the release store serves the public bundle only")
     }
 
     static func keepsOnlyTheChangelog() {

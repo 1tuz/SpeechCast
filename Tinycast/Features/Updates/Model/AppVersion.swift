@@ -1,11 +1,14 @@
 import Foundation
 
-/// A released version: `MAJOR.MINOR.PATCH`, optionally `-beta.N`, ordered by semver precedence.
+/// A released version: `MAJOR.MINOR.PATCH`, optionally `-beta` or `-beta.N`, ordered by semver
+/// precedence with the unnumbered beta as `-beta.0`'s equal and beta.N below the stable triple.
 struct AppVersion: Comparable, Hashable, Sendable, CustomStringConvertible {
     let major: Int
     let minor: Int
     let patch: Int
     /// Nil on a stable release, which outranks every prerelease of the same triple.
+    /// `-beta` parses as 0, so it orders below `-beta.1` and never conflates with the stable
+    /// release, which carries nil.
     let beta: Int?
 
     init?(_ text: String) {
@@ -24,9 +27,14 @@ struct AppVersion: Comparable, Hashable, Sendable, CustomStringConvertible {
         if halves.count == 2 {
             // `beta` is the only prerelease channel that ships, so anything else is unreadable.
             let suffix = halves[1].split(separator: ".", omittingEmptySubsequences: false)
-            guard suffix.count == 2, suffix[0] == "beta", let count = Self.number(suffix[1])
-            else { return nil }
-            beta = count
+            guard suffix[0] == "beta" else { return nil }
+            switch suffix.count {
+            case 1: beta = 0
+            case 2:
+                guard let count = Self.number(suffix[1]) else { return nil }
+                beta = count
+            default: return nil
+            }
         } else {
             beta = nil
         }
@@ -39,7 +47,8 @@ struct AppVersion: Comparable, Hashable, Sendable, CustomStringConvertible {
 
     var description: String {
         let triple = "\(major).\(minor).\(patch)"
-        return beta.map { "\(triple)-beta.\($0)" } ?? triple
+        guard let beta else { return triple }
+        return beta == 0 ? "\(triple)-beta" : "\(triple)-beta.\(beta)"
     }
 
     static func < (lhs: Self, rhs: Self) -> Bool {

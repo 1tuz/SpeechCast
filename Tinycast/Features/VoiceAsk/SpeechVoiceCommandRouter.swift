@@ -13,6 +13,9 @@ enum SpeechVoiceCommandRouter {
             core.quickAICoordinator.composeVoicePrompt(speech)
             core.showMessage(message, tone: .neutral)
             return true
+        case .invalidWindowCommand(let message):
+            core.showMessage(message, tone: .neutral)
+            return true
         case .ambiguous(let targets):
             // Never guess if two applications or actions have similarly plausible names.
             core.voiceCommandCatalogWindow.showChoices(targets)
@@ -118,7 +121,7 @@ enum SpeechVoiceCommandRouter {
                 core.showMessage("Управление окнами недоступно", tone: .neutral)
                 return
             }
-            core.windowCommandCoordinator.runWindowCommand(id: command)
+            core.windowCommandCoordinator.runWindowCommand(id: command, voiceFeedback: true)
         case .workspace(let index, let moveWindow):
             core.windowCommandCoordinator.runWorkspace(number: index, moveWindow: moveWindow)
         case .extensionInvocation(let id, let argument):

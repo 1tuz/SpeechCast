@@ -12,24 +12,20 @@ no appcast: the release feed the website already reads is the feed the app reads
   installable and is not offered.
 - **The DMG is arm64-only.** `ReleaseFeed.asset` answers nothing for an Intel Mac rather than
   offering a build whose only slice would refuse to launch.
-- **Nobody ever runs `xattr`, and nothing ever strips a quarantine flag.** A DMG SpeechCast fetched
-  itself never carries one — macOS sets that flag for sandboxed downloaders and for apps
-  that opt in with `LSFileQuarantineEnabled`, and SpeechCast is neither — so there is no flag
-  to remove and no code to try. Releases are Developer ID-signed and notarized by Apple, so the
-  first launch of an updated copy opens straight away, and no release or update path works
-  around Gatekeeper.
-- **The signature is the only integrity guarantee.** A downloaded bundle is trusted when its seal
-  validates, nested helper included, *and* it either satisfies the Developer ID requirement pinned in
-  `BundleSignature` — the team `J656U8XZ93` requirement every release satisfies — or carries the
-  byte-identical leaf certificate the running app does, which is the path a copy installed before
-  the switch takes. `notarized` is deliberately not in the requirement — it resolves the ticket
-  through `syspolicyd` or the network, so an offline Mac would refuse a bundle the chain already
-  proves is ours.
-- **Only `com.tinycast.app` updates itself, and only on non-prerelease tags.** Historical
-  `-beta.N` tags from the retired channel sit in the release list and are never offered.
-  `com.tinycast.app.dev` never updates at all, and does not advertise the command.
-- **Nothing is installed unless every check passes.** Bundle id, version and signature are all checked
-  on the expanded copy before `replaceItemAt` runs, and the running app survives any failure untouched.
+- **The release certificate is the trust root.** `BundleSignature` validates the DMG seal and
+  pinned SHA-256 leaf certificate before mounting. After extraction it verifies the application
+  seal, nested executables, fixed bundle ID and expected version. Unknown and ad-hoc signatures
+  are refused. SHA-256 metadata from the release is only an extra corruption check.
+- **Quarantine removal follows authentication.** The installer and updater remove quarantine
+  only on the verified replacement app. No global Gatekeeper or SIP setting changes. Self-signed
+  releases are not Apple notarized, so tests exercise the installer and actual launch rather
+  than requiring Gatekeeper to accept a quarantined self-signed download.
+- **The public bundle ID stays `com.tinycast.app`.** Development builds do not install updates.
+  Version parsing accepts stable, `-beta` and `-beta.N` forms. A beta can advance to its stable
+  release; drafts and inconsistent prerelease flags are refused.
+- **Installation is a transaction.** The updater stages a verified replacement beside the
+  installed app and keeps the old copy until replacement succeeds. A failed swap or migration
+  restores the previous app. It does not modify settings or user-data directories.
 - **Relaunching goes through `NSApp.terminate`, never `exit`.** That is what flushes a pending note
   draft and hands back the Hyper Key's HID-level caps remap, which outlives the process.
   Relaunch schedules termination through the main run loop, outside any Swift task or dispatch
@@ -74,12 +70,10 @@ no appcast: the release feed the website already reads is the feed the app reads
 | `com.tinycast.app` | `.stable` | releases |
 | anything else | `.development` | nothing |
 
-`AppVersion` parses `MAJOR.MINOR.PATCH` and `MAJOR.MINOR.PATCH-beta.N` with semver precedence: a
-prerelease sorts below the release it leads to, and `beta.10` above `beta.9`. The `-beta.N` form is
-kept readable so the historical tags from the retired channel are recognized and then refused by the
-channel, not offered. Everything else parses to nil, so an off-shape tag can never be offered as an
-update. A release whose tag disagrees with its `prerelease` flag is treated as mis-published and
-skipped.
+`AppVersion` parses `MAJOR.MINOR.PATCH`, `MAJOR.MINOR.PATCH-beta` and
+`MAJOR.MINOR.PATCH-beta.N`. An unnumbered beta precedes numbered betas; all betas precede the
+stable version with the same numeric triple. A tag whose prerelease flag disagrees with its
+version is skipped. Invalid tags are never used as installation paths.
 
 There is no Intel build. The DMG ships an arm64 slice only, so `ReleaseArchitecture.current` on an
 Intel Mac reaches `ReleaseFeed.asset` and gets nil — an Intel copy is offered nothing rather than a
@@ -111,29 +105,15 @@ Check for Updates ignores the record and always offers whatever is newer than wh
 
 One route, whatever the install came from:
 
-1. Stream the DMG into `~/Library/Caches/<bundle-id>/Updates/`, with real byte progress and a
-   Cancel that actually aborts the transfer.
-2. `DiskImage.stage`: `hdiutil attach -readonly -nobrowse` at a private mount point, `ditto` the one
-   `.app` out onto the staging directory (`replaceItemAt` cannot cross volumes), then detach — forced
-   if the polite detach refuses, and never fatal once the copy exists.
-3. Verify the bundle id, the version, and that the code signature is valid and proves the bundle is
-   ours — by the pinned Developer ID requirement (team `J656U8XZ93`, which every release satisfies),
-   or, for a locally signed development build, by the running app's own leaf certificate. A copy
-   whose code predates the Developer ID branch has no route here; `Scripts/install.sh` migrates it.
-4. `FileManager.replaceItemAt`. The staging folder is on the same volume as `/Applications`, which is
-   what lets this be atomic. A non-writable `/Applications` is reported, not worked around; there is
-   no privileged helper. One case has a fallback, though: a bundle another account installed (brew
-   as a different user, a moved copy) makes `replaceItemAt` fail even though `/Applications` itself
-   is admin-writable — the old bundle's interior is read-only for this account. The installer then
-   renames the old bundle aside in the same parent directory and moves the staged one into place,
-   both parent-directory operations an admin account may perform. The old copy is kept as
-   `SpeechCast.app.pre-update` (a previous leftover is trashed first) so a broken new bundle can
-   still be rolled back by hand; a failed swap restores the old copy to its name before the
-   failure surfaces. Everything else about the failure — including a `/Applications` the account
-   genuinely cannot write — is still reported, never escalated. When the running bundle still
-   carries a pre-rename folder name (`Tinycast.app`, `VoiceCast.app`), the replace keeps that
-   name and the installer then renames the installed bundle to `SpeechCast.app`, restoring the
-   previous state if the rename fails.
+1. Stream the DMG into a private staging directory, with byte progress and cancellation.
+2. Verify the downloaded image's cryptographic signature and pinned release certificate before
+   calling `hdiutil`. Check the expected size and available integrity metadata as applicable.
+3. `DiskImage.stage` mounts read-only, copies the app with `ditto`, then detaches the image.
+4. Verify bundle ID `com.tinycast.app`, semantic version, application signature and nested code.
+   Stage the replacement on the destination volume and clear quarantine only on that verified
+   copy. Keep the old app through the swap and restore it on installation failure. Legacy
+   `Tinycast.app` and `VoiceCast.app` paths migrate to `SpeechCast.app`. The updater does not
+   escalate privileges; a non-writable installation reports an error.
 5. Offer Relaunch, which spawns a detached waiter that reopens the app once this process exits —
    `open` on a bundle id that is still running would only re-activate the instance on its way out.
 
@@ -144,12 +124,10 @@ later quit and reopen. A launch of any other version only clears it, so a hand i
 Nothing here touches `~/Library/Preferences`, `~/Library/Caches` or `Application Support`, so no
 setting, clipboard entry, note or snippet is affected by an update.
 
-Every update lands on the same bundle id, `com.tinycast.app`, that an older Tinycast copy already
-runs — the installed bundle is replaced in place, so preferences, caches, TCC grants and the login
-item keyed to that id all carry over with nothing to migrate. The last pre-switch release already
-carries the Developer ID branch of `BundleSignature`, so an old Tinycast updates into SpeechCast in
-place with its settings intact; the installer (`Scripts/install.sh`) also renames the old
-`Tinycast.app` or `VoiceCast.app` folder to `SpeechCast.app`.
+Every update retains bundle ID `com.tinycast.app` and the existing data paths. A stable release
+certificate maximizes permission continuity, but macOS can require new TCC grants after a
+certificate or path change. Old apps that do not know this pin need one migration through
+`Scripts/install.sh`. See [the migration procedure](../speechcast-distribution.md#one-time-migration).
 
 ## Releasing into it
 

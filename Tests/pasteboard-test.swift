@@ -24,6 +24,8 @@ struct PasteboardTests {
         fileEntriesWriteBackAsFiles()
         aVanishedFileWritesNothing()
         imageEntriesWriteBackWithTheirFile()
+        deniedHistoryPasteLeavesTheBoardAndOrderAlone()
+        copyNeedsNoAccessibilityAccess()
 
         print("\(passes)/\(passes + failures) passed")
         if failures > 0 { exit(1) }
@@ -356,6 +358,48 @@ struct PasteboardTests {
         }
     }
 
+    static func deniedHistoryPasteLeavesTheBoardAndOrderAlone() {
+        withScratch { dir in
+            let file = dir.appendingPathComponent("report.pdf")
+            try? Data("pdf".utf8).write(to: file)
+            let store = ClipboardStore(directory: dir.appendingPathComponent("store"))
+            store.addFiles([file.path], sourceBundleID: nil)
+            store.addText("newest", sourceBundleID: nil)
+            let item = store.items[1]
+            let pb = board()
+            pb.declareTypes([.string], owner: nil)
+            pb.setString("already copied", forType: .string)
+            let originalCount = pb.changeCount
+            let originalOrder = store.items.map(\.id)
+
+            for plainText in [false, true] {
+                do throws(Paster.HistoryPasteFailure) {
+                    _ = try Paster.prepareHistoryPaste(
+                        item, store: store, into: nil, plainText: plainText, on: pb)
+                    fail("history paste reports denial before preparing its payload")
+                } catch {
+                    expect(error == .needsAccessibility, "history paste reports Accessibility denial")
+                }
+            }
+            expect(pb.changeCount == originalCount, "denied paste leaves the board untouched")
+            expect(pb.string(forType: .string) == "already copied", "denied paste keeps the prior copy")
+            expect(store.items.map(\.id) == originalOrder, "denied paste does not promote the entry")
+        }
+    }
+
+    static func copyNeedsNoAccessibilityAccess() {
+        withScratch { dir in
+            let file = dir.appendingPathComponent("report.pdf")
+            try? Data("pdf".utf8).write(to: file)
+            let store = ClipboardStore(directory: dir.appendingPathComponent("store"))
+            store.addFiles([file.path], sourceBundleID: nil)
+            let pb = board()
+
+            expect(Paster.copy(store.items[0], store: store, to: pb), "copy succeeds without Accessibility")
+            expect(pb.string(forType: .string) == file.path, "copy puts the entry on the board")
+        }
+    }
+
     // MARK: - Harness
 
     static func board() -> NSPasteboard { NSPasteboard.withUniqueName() }
@@ -390,6 +434,7 @@ final class AppSettings {
 }
 
 enum Permissions {
+    static func isAccessibilityTrusted() -> Bool { false }
     static func ensureAccessibility() -> Bool { false }
 }
 

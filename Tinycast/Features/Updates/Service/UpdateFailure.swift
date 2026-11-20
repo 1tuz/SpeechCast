@@ -1,5 +1,6 @@
 import Foundation
 
+/// The failure modes an install can hit, each with user-facing copy and a recovery hint.
 enum UpdateFailure: LocalizedError, Equatable {
     case downloadFailed(String)
     case mountFailed(String)
@@ -24,7 +25,7 @@ enum UpdateFailure: LocalizedError, Equatable {
             return String(localized: "The downloaded app is not this build of SpeechCast.")
         case .identityMismatch:
             return String(
-                localized: "The downloaded app is not signed by the identity this copy was signed with.")
+                localized: "The downloaded app is not signed by SpeechCast's release certificate.")
         case .versionMismatch(let expected, let found):
             return String(localized: "The downloaded app is version \(found), not \(expected).")
         case .replaceFailed(let detail):

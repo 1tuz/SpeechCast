@@ -4,6 +4,10 @@ import AppKit
 /// Applies window commands over AX. See docs/features/window-management.md#applying-a-placement.
 @MainActor
 final class WindowMover {
+    enum Outcome {
+        case changed, unchanged, accepted, failed
+    }
+
     /// `CFEqual`/`CFHash` are the supported identity; the pid separates two processes' elements.
     private struct ExternalKey: Hashable {
         let pid: pid_t
@@ -94,13 +98,13 @@ final class WindowMover {
 
         func write(
             _ placement: WindowPlacementEngine.Placement, current: CGRect, canResize: Bool,
-            canvas: CGRect?, geometry: AXGeometry
+            canvas: CGRect?, geometry: AXGeometry, requireReadback: Bool
         ) -> CGRect? {
             switch self {
             case .external(_, let window):
                 AXWindowAccess.write(
                     placement.frame, anchor: placement.anchor, to: window, current: current,
-                    canResize: canResize, canvas: canvas)
+                    canResize: canResize, canvas: canvas, requireReadback: requireReadback)
             case .own(let window):
                 Self.writeOwn(
                     placement, to: window, current: current, canResize: canResize,
@@ -180,33 +184,33 @@ final class WindowMover {
         _ decision: WindowActionMemory<WindowKey>.Decision
     ) -> WindowPlacementEngine.Placement?
 
-    /// Runs `command` against `target`'s focused window, returning whether anything changed.
-    @discardableResult
+    /// Require AX readback when the caller will report the result to the user.
     func perform(
-        _ command: WindowCommand.ID, target: WindowTarget?, gap: CGFloat, cycle: WindowCycle
-    ) -> Bool {
+        _ command: WindowCommand.ID, target: WindowTarget?, gap: CGFloat, cycle: WindowCycle,
+        requireReadback: Bool = false
+    ) -> Outcome {
         guard let catalogued = WindowCommandCatalog.command(id: command),
             let focused = focusedWindow(of: target)
-        else { return false }
+        else { return .failed }
 
         if catalogued.kind == .axAction {
             switch command {
             case .minimize:
-                return focused.surface.minimizeSelf()
+                return focused.surface.minimizeSelf() ? .accepted : .failed
             case .closeWindow:
-                return focused.surface.closeSelf()
+                return focused.surface.closeSelf() ? .accepted : .failed
             default:
-                return false
+                return .failed
             }
         }
         if catalogued.kind == .fullscreen {
-            guard toggleFullScreen(focused.surface) else { return false }
+            guard toggleFullScreen(focused.surface) else { return .failed }
             // The size chain is moot, but the pre-Tinycast frame is still the Restore target.
             memory.forgetCycle(key: focused.key)
-            return true
+            return .accepted
         }
         return place(
-            focused, command: command, gap: gap,
+            focused, command: command, gap: gap, requireReadback: requireReadback,
             cycleLength: {
                 WindowPlacementEngine.cycleLength(for: command, screens: $0, cycle: cycle)
             }
@@ -224,11 +228,13 @@ final class WindowMover {
     @discardableResult
     func perform(_ size: CustomWindowSize, target: WindowTarget?, gap: CGFloat) -> Bool {
         guard let focused = focusedWindow(of: target) else { return false }
-        return place(
+        let outcome = place(
             focused, command: nil, gap: gap, cycleLength: { _ in 1 },
             resolve: { current, screens, _ in
                 size.placement(for: current, screens: screens, gap: gap)
             })
+        if case .changed = outcome { return true }
+        return false
     }
 
     private func focusedWindow(of target: WindowTarget?) -> FocusedWindow? {
@@ -258,16 +264,17 @@ final class WindowMover {
     /// The one decide → resolve → write → commit sequence every geometry press runs through.
     private func place(
         _ focused: FocusedWindow, command: WindowCommand.ID?, gap: CGFloat,
-        cycleLength: ([WindowPlacementEngine.Screen]) -> Int, resolve: Resolver
-    ) -> Bool {
+        requireReadback: Bool = false, cycleLength: ([WindowPlacementEngine.Screen]) -> Int,
+        resolve: Resolver
+    ) -> Outcome {
         let surface = focused.surface
         let geometry = AXGeometry(screens: NSScreen.screens)
         // Tiling a natively fullscreen window fights the window server; leave it alone.
-        guard !surface.isFullScreen, let current = surface.frame(in: geometry) else { return false }
+        guard !surface.isFullScreen, let current = surface.frame(in: geometry) else { return .failed }
 
         let screens = AXScreens.converted(NSScreen.screens, geometry: geometry)
         guard let host = WindowPlacementEngine.screen(containing: current, in: screens) else {
-            return false
+            return .failed
         }
 
         // One timestamp for the whole command, so the cycle timeout can't straddle two readings.
@@ -275,10 +282,16 @@ final class WindowMover {
         let decision = memory.decide(
             key: focused.key, command: command, currentFrame: current, currentScreenID: host.id,
             cycleLength: cycleLength(screens), now: now)
-        guard let placement = resolve(current, screens, decision) else { return false }
+        guard let placement = resolve(current, screens, decision) else {
+            if command == .restore && !decision.canRestore { return .unchanged }
+            if (command == .nextDisplay || command == .previousDisplay) && screens.count == 1 {
+                return .unchanged
+            }
+            return .failed
+        }
 
         // Checked before any write, so an unpositionable window is left untouched.
-        guard surface.canMove else { return false }
+        guard surface.canMove else { return .failed }
         let canResize = placement.resizes && surface.canResize
 
         let destination = screens.first { $0.id == placement.screenID }
@@ -293,8 +306,8 @@ final class WindowMover {
         guard
             let applied = surface.write(
                 placement, current: current, canResize: canResize, canvas: canvas,
-                geometry: geometry)
-        else { return false }
+                geometry: geometry, requireReadback: requireReadback)
+        else { return .failed }
 
         let landedOn =
             WindowPlacementEngine.screen(containing: applied, in: screens)?.id
@@ -302,7 +315,10 @@ final class WindowMover {
         memory.commit(
             key: focused.key, command: command, decision: decision, appliedFrame: applied,
             screenID: landedOn, now: now)
-        return !applied.equalTo(current)
+        if let command, WindowCommandCatalog.movesOnly.contains(command) {
+            return applied.origin == current.origin ? .unchanged : .changed
+        }
+        return applied.equalTo(current) ? .unchanged : .changed
     }
 
     // MARK: - Fullscreen

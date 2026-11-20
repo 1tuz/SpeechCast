@@ -742,6 +742,14 @@ run settings-history-test  Tinycast/Features/Settings/SettingsTab.swift \
                            Tinycast/Platform/LocalizedResource.swift
 run updates-test           Tinycast/Features/Updates/Model/*.swift \
                            Tinycast/Features/Updates/Service/BundleSignature.swift
+run index update-installation-test \
+                          Tinycast/Features/Updates/Model/*.swift \
+                          Tinycast/Features/Updates/Service/UpdateFailure.swift \
+                          Tinycast/Features/Updates/Service/BundleSignature.swift \
+                          Tinycast/Features/Updates/Service/DiskImage.swift \
+                          Tinycast/Features/Updates/Service/ToolRunner.swift \
+                          Tinycast/Features/Updates/Service/UpdateDownloader.swift \
+                          Tinycast/Features/Updates/Service/UpdateInstaller.swift
 run installer-fallback-test  -parse-as-library
 run signature-entitlements-test -parse-as-library
 run update-check-test      Tinycast/Features/Updates/Model/*.swift \

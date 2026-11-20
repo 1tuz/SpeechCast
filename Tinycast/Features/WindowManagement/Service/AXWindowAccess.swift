@@ -120,7 +120,7 @@ enum AXWindowAccess {
     /// The one write sequence, so a stubborn app lands the same way from any caller.
     static func write(
         _ target: CGRect, anchor: WindowPlacementEngine.Anchor, to window: AXUIElement,
-        current: CGRect, canResize: Bool, canvas: CGRect?
+        current: CGRect, canResize: Bool, canvas: CGRect?, requireReadback: Bool = false
     ) -> CGRect? {
         guard canResize else {
             var slot = anchor.place(current.size, in: target)
@@ -128,7 +128,7 @@ enum AXWindowAccess {
             guard setPosition(WindowPlacementEngine.rounded(slot).origin, on: window) else {
                 return nil
             }
-            return frame(of: window) ?? current
+            return frame(of: window) ?? (requireReadback ? nil : current)
         }
 
         // size → position → size. See docs/features/window-management.md#applying-a-placement.
@@ -139,14 +139,15 @@ enum AXWindowAccess {
         }
         _ = setSize(target.size, on: window)
 
-        guard var actual = frame(of: window) else { return target }
+        guard var actual = frame(of: window) else { return requireReadback ? nil : target }
 
         // The second resize can shift the origin: some apps anchor on a different corner.
         if abs(actual.minX - target.minX) > clampTolerance
             || abs(actual.minY - target.minY) > clampTolerance
         {
             _ = setPosition(target.origin, on: window)
-            actual = frame(of: window) ?? actual
+            if let observed = frame(of: window) { actual = observed }
+            else if requireReadback { return nil }
         }
 
         // An app-imposed minimum: re-place once per the anchor. No loop, which would jitter.
@@ -156,7 +157,8 @@ enum AXWindowAccess {
             var slot = anchor.place(actual.size, in: target)
             if let canvas { slot = WindowPlacementEngine.clamped(slot, into: canvas) }
             _ = setPosition(WindowPlacementEngine.rounded(slot).origin, on: window)
-            actual = frame(of: window) ?? actual
+            if let observed = frame(of: window) { actual = observed }
+            else if requireReadback { return nil }
         }
         return actual
     }

@@ -54,10 +54,11 @@ done
 # Keep the independent SpeechCast identity on every automatic upstream sync.
 bash .1tuz/branding/apply.sh
 
+
 # Optional rewrites: leftover upstream releases-page links.
 { grep -rlF --include='*.swift' 'github.com/abue-ammar/tinycast/releases' Tinycast || true; } | while read -r file; do
   echo "rewriting releases link in $file"
-  sed -i.bak 's#github\.com/abue-ammar/tinycast/releases#github.com/1tuz/tinycast/releases#g' "$file"
+  sed -i.bak 's#github\.com/abue-ammar/tinycast/releases#github.com/1tuz/SpeechCast/releases#g' "$file"
   rm -f "$file.bak"
 done
 

@@ -1,43 +1,37 @@
 #!/bin/bash
-# Release verification for a Developer ID-signed, notarized SpeechCast
-# .app or released .dmg.
+# Release verification for a SpeechCast .app or released .dmg signed with the
+# permanent self-signed release certificate pinned in Config/signing.conf.
 #
-# Every check is a hard failure: this is the release gate run on macOS CI.
-# --unnotarized skips the notarization-specific checks (stapler, spctl) for
-# pre-notarization runs in CI; everything else still applies.
+# Every check is a hard failure: this is the release gate, run on macOS CI and
+# usable locally. It replaces the old Developer ID/notarization gate: there is
+# no Apple team, no notarization ticket, no stapler, no spctl acceptance —
+# authenticity is the pinned certificate leaf, proven with codesign.
+#
 # Usage:
-#   verify-release.sh app <path.app> [--version VERSION] [--unnotarized]
-#   verify-release.sh dmg <path.dmg> [--version VERSION] [--unnotarized]
+#   verify-release.sh app <path.app> [--version VERSION]
+#   verify-release.sh dmg <path.dmg> [--version VERSION]
 set -euo pipefail
 
 MODE="${1:-}"
 BUNDLE_ID="com.tinycast.app"
-TEAM="J656U8XZ93"
-UNNOTARIZED=0
-# Authority names under a Developer ID Application cert vary; only the
-# team is pinned. Any name is accepted as long as the team matches.
-# codesign -dv prints each chain entry as "Authority=<name>".
-AUTHORITY_RE="^Authority=Developer ID Application: .+ \\(${TEAM}\\)\$"
+PIN="A0AA9BCD7AFBC13A3CF4B16CAC7B84A0632816143F9C9D217DF9757B8400FD62"
 VERSION=""
 
 usage() {
-
-    cat >&2 <<'EOF'
-Usage:
-  verify-release.sh app <path.app> [--version VERSION] [--unnotarized]
-  verify-release.sh dmg <path.dmg> [--version VERSION] [--unnotarized]
-EOF
+    echo "usage: $0 app <path.app> [--version VERSION]" >&2
+    echo "       $0 dmg <path.dmg> [--version VERSION]" >&2
     exit 2
 }
 
 fail() {
-    echo "::error::$1"
+    echo "::error::$1" >&2
+    echo "✗ $1" >&2
     exit 1
 }
 
 [ "$#" -ge 2 ] || usage
 case "$MODE" in
-    app|dmg) ;;
+    app | dmg) ;;
     *) usage ;;
 esac
 TARGET="$2"
@@ -45,92 +39,83 @@ shift 2
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --version) VERSION="$2"; shift 2 ;;
-        --unnotarized) UNNOTARIZED=1; shift ;;
-        *) echo "::error::unknown option: $1" >&2; usage ;;
+        --version) VERSION="${2:?--version needs a value}"; shift 2 ;;
+        *) usage ;;
     esac
 done
 
-# The gate requires Apple CLIs that only exist on macOS. A missing tool is
-# a failure, never a skip. spctl/stapler are only needed for the
-# notarization checks, which --unnotarized skips.
+# The gate requires Apple CLIs that only exist on macOS. A missing tool is a
+# failure, never a skip. No xcrun/python/node/jq anywhere: plain macOS CLIs.
 require_tool() {
-    command -v "$1" >/dev/null 2>&1 ||
-        fail "required tool '$1' not found; release verification must run on macOS"
+    command -v "$1" >/dev/null 2>&1 || fail "$1 is required but not found"
 }
 require_tool codesign
 require_tool hdiutil
 require_tool file
-if [ "$UNNOTARIZED" -eq 0 ]; then
-    require_tool spctl
-    require_tool stapler
-fi
-
+require_tool /usr/bin/openssl
+require_tool shasum
 
 MOUNTPOINT=""
 DEVICE=""
 cleanup() {
-    # Detach by device, not by path: a failed verification may already have removed the
-    # mountpoint, and path-based detach cannot resolve a mount whose directory is gone.
-    if [ -n "$DEVICE" ]; then
-        hdiutil detach "$DEVICE" -force >/dev/null 2>&1 || true
-    fi
-    if [ -n "$MOUNTPOINT" ]; then
-        rmdir "$MOUNTPOINT" 2>/dev/null || rm -rf "$MOUNTPOINT" 2>/dev/null || true
-    fi
+    if [ -n "$DEVICE" ]; then hdiutil detach "$DEVICE" -quiet >/dev/null 2>&1 || true; fi
+    [ -z "$MOUNTPOINT" ] || rm -rf "$MOUNTPOINT" 2>/dev/null || true
+    [ -z "$EXTRACT_DIR" ] || rm -rf "$EXTRACT_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
+
+verify_pinned_leaf() {
+    # $1: target (app bundle, Mach-O binary, or dmg file); $2: label for errors.
+    # codesign writes extracted certs as <prefix><N>, so the leaf is ${prefix}0.
+    # An ad-hoc signature has no certificates at all.
+    local target="$1" label="$2" prefix leaf_sha
+    codesign --verify --strict "$target" >/dev/null 2>&1 ||
+        fail "$label: code signature is invalid (corrupted or modified)"
+    EXTRACT_DIR="$(mktemp -d)"
+    prefix="$EXTRACT_DIR/leaf"
+    codesign -d --extract-certificates="$prefix" --verbose=4 "$target" >/dev/null 2>&1 ||
+        fail "$label: cannot inspect the signature"
+    [ -f "${prefix}0" ] ||
+        fail "$label: signed without a certificate (ad-hoc or unsigned)"
+    leaf_sha="$(/usr/bin/openssl dgst -sha256 -r "${prefix}0" 2>/dev/null | awk '{print toupper($1)}')"
+    [ "$leaf_sha" = "$PIN" ] ||
+        fail "$label: signing certificate is not the pinned SpeechCast release certificate ($leaf_sha)"
+    rm -rf "$EXTRACT_DIR"; EXTRACT_DIR=""
+}
 
 # Enumerate every Mach-O under Contents: main executable, Helpers, Frameworks,
 # PlugIns, XPCServices, and anything else that ships code.
 machos_in_app() {
-    local app="$1"
-    local f
+    local app="$1" f
     while IFS= read -r -d '' f; do
         if file -b "$f" | grep -q "Mach-O"; then
             echo "$f"
         fi
     done < <(find "$app/Contents" -type f -print0)
-    return 0
+    true
 }
 
-# Check a single Mach-O: deep-strict signature, Developer ID Application
-# authority for our team, secure timestamp, hardened runtime, and no
-# get-task-allow entitlement.
+# Check a single Mach-O: deep-strict signature, pinned leaf certificate, hardened
+# runtime, and no get-task-allow entitlement. Self-signed releases carry no Team
+# identifier and no secure timestamp (there is no authority to timestamp them).
 verify_macho() {
-    local app="$1"
-    local bin="$2"
-    local rel="${bin#$app/}"
+    local app="$1" bin="$2"
+    local rel="${bin#"$app"/}"
+    local info
 
-    [ -x "$bin" ] || fail "$rel is not executable"
+    codesign --verify --strict "$bin" >/dev/null 2>&1 ||
+        fail "$rel: signature does not verify"
 
-    codesign --verify --deep --strict --verbose=2 "$bin" >/dev/null 2>&1 ||
-        fail "$rel: codesign --verify --deep --strict failed"
+    # The runtime flag appears inside the CodeDirectory line, e.g.
+    # "CodeDirectory v=20500 ... flags=0x10000(runtime) ...", never on its own.
+    info="$(codesign -dv --verbose=4 "$bin" 2>&1)" || fail "$rel: cannot inspect the signature"
+    printf '%s\n' "$info" | grep -q "flags=0x[0-9a-fA-F]*([^)]*runtime" ||
+        fail "$rel: hardened runtime is not enabled"
 
-    local details
-    details="$(codesign -dv --verbose=4 "$bin" 2>&1 || true)"
-    [ -n "$details" ] ||
-        fail "$rel: codesign -dv failed"
+    verify_pinned_leaf "$bin" "$rel"
 
-    # Pin the team, never the name: certificates are reissued under
-    # different names but the team identifier is stable.
-    grep -Eq "$AUTHORITY_RE" <<<"$details" ||
-        fail "$rel: no 'Developer ID Application: <name> (${TEAM})' authority found"
-    grep -q "TeamIdentifier=${TEAM}" <<<"$details" ||
-        fail "$rel: TeamIdentifier is not ${TEAM}"
-
-    # Self-signed builds cannot carry a secure timestamp; its absence means
-    # the artifact was not signed for distribution.
-    grep -q "^Timestamp=" <<<"$details" ||
-        fail "$rel: no secure timestamp in signature (unsigned or self-signed build)"
-
-    # codesign -dv emits "CodeDirectory ... flags=0x10000(runtime) ..." mid-line.
-    grep -Eq "flags=0x[0-9a-f]+\\([^)]*runtime" <<<"$details" ||
-        fail "$rel: hardened runtime not enabled"
-
-    if codesign -d --entitlements - --xml "$bin" 2>/dev/null |
-        grep -q "com.apple.security.get-task-allow"; then
-        fail "$rel: get-task-allow entitlement present"
+    if codesign -d --entitlements - --xml "$bin" 2>/dev/null | grep -q get-task-allow; then
+        fail "$rel: get-task-allow is present"
     fi
 }
 
@@ -140,12 +125,13 @@ verify_app() {
     name="$(basename "$app" .app)"
 
     [ -d "$app" ] || fail "$app is not an .app bundle"
-    [ -d "$app/Contents" ] || fail "$app has no Contents directory"
+    [ -d "$app/Contents" ] || fail "$name.app has no Contents directory"
 
     local main_exe="$app/Contents/MacOS/SpeechCast"
     [ -f "$main_exe" ] || fail "$name.app: missing Contents/MacOS/SpeechCast"
     [ -x "$main_exe" ] || fail "$name.app: Contents/MacOS/SpeechCast is not executable"
 
+    # Nested code (helpers) must be sealed and signed by the pinned certificate.
     codesign --verify --deep --strict --verbose=2 "$app" >/dev/null 2>&1 ||
         fail "$name.app: codesign --verify --deep --strict failed"
 
@@ -163,6 +149,10 @@ verify_app() {
             fail "$name.app: CFBundleShortVersionString is '$ver', expected '$VERSION'"
     fi
 
+    # The app bundle's own seal must carry the pinned leaf (the main executable's
+    # certificate is checked per-Mach-O below).
+    verify_pinned_leaf "$app" "$name.app"
+
     local bins
     bins="$(machos_in_app "$app")"
     [ -n "$bins" ] || fail "$name.app: no Mach-O binaries found under Contents"
@@ -172,19 +162,7 @@ verify_app() {
         verify_macho "$app" "$bin"
     done <<< "$bins"
 
-    if [ "$UNNOTARIZED" -eq 0 ]; then
-        # Notarization ticket must be stapled to the bundle.
-        xcrun stapler validate "$app" >/dev/null 2>&1 ||
-            fail "$name.app: stapler validate failed (no notarization ticket stapled)"
-
-        # Gatekeeper must accept it as a notarized Developer ID app.
-        local assess
-        assess="$(spctl --assess --type execute --verbose=4 "$app" 2>&1 || true)"
-        grep -q "source=Notarized Developer ID" <<<"$assess" ||
-            fail "$name.app: spctl assessment is not 'source=Notarized Developer ID': $assess"
-    fi
-
-    echo "✓ $name.app passed release verification (team ${TEAM}, ${BUNDLE_ID})"
+    echo "✓ $name.app passed release verification (pinned certificate, ${BUNDLE_ID})"
 }
 
 verify_dmg() {
@@ -194,19 +172,9 @@ verify_dmg() {
 
     [ -f "$dmg" ] || fail "$dmg does not exist"
 
-    if [ "$UNNOTARIZED" -eq 0 ]; then
-        # Notarization ticket stapled to the image itself.
-        xcrun stapler validate "$dmg" >/dev/null 2>&1 ||
-            fail "$base.dmg: stapler validate failed (no notarization ticket stapled)"
-
-        local assess
-        assess="$(spctl --assess --type open \
-            --context context:primary-signature --verbose=4 "$dmg" 2>&1 || true)"
-        grep -q "accepted" <<<"$assess" ||
-            fail "$base.dmg: spctl assessment rejected the image: $assess"
-        grep -q "source=Notarized Developer ID" <<<"$assess" ||
-            fail "$base.dmg: spctl assessment is not 'source=Notarized Developer ID': $assess"
-    fi
+    # The image itself must be signed by the pinned certificate BEFORE it is
+    # mounted anywhere: that is the download-authenticity check.
+    verify_pinned_leaf "$dmg" "$base.dmg"
 
     MOUNTPOINT="$(mktemp -d)"
     rmdir "$MOUNTPOINT"
@@ -227,7 +195,7 @@ verify_dmg() {
     rm -rf "$MOUNTPOINT"
     MOUNTPOINT=""
 
-    echo "✓ $base.dmg passed release verification (team ${TEAM}, ${BUNDLE_ID})"
+    echo "✓ $base.dmg passed release verification (pinned certificate, ${BUNDLE_ID})"
 }
 
 case "$MODE" in

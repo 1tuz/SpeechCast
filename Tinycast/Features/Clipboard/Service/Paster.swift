@@ -11,35 +11,57 @@ enum Paster {
     /// Shorter: no activation to wait on, only the pasteboard write reaching the target's process.
     private static let directPostDelay: TimeInterval = 0.05
 
-    /// Write the item and paste it into `previousApp`, activating it so ⌘V lands there.
-    @MainActor @discardableResult
-    static func paste(
-        _ item: ClipboardItem, store: ClipboardStore, previousApp: NSRunningApplication?
-    ) -> Bool {
-        guard write(item, store: store) else { return false }
-        store.promote(item)
-        previousApp?.activate()
-        DispatchQueue.main.asyncAfter(deadline: .now() + activationDelay) {
-            postCommandV()
-        }
-        return true
+    enum HistoryPasteFailure: Error {
+        case needsAccessibility, noTarget, focusChanged, unavailable, clipboardChanged, eventCreationFailed
     }
 
-    /// Paste only the item's text, so a file arrives as its path and the receiver's style applies.
-    @MainActor @discardableResult
-    static func pastePlainText(
-        _ item: ClipboardItem, store: ClipboardStore, previousApp: NSRunningApplication?
-    ) -> Bool {
-        guard let text = item.plainText else { return false }
-        pasteString(text, previousApp: previousApp)
-        store.promote(item)
-        return true
+    @MainActor
+    static func checkHistoryPasteTarget(_ app: NSRunningApplication?) throws(HistoryPasteFailure)
+        -> NSRunningApplication
+    {
+        guard Permissions.isAccessibilityTrusted(), CGPreflightPostEventAccess() else {
+            throw .needsAccessibility
+        }
+        guard let app, !app.isTerminated,
+            app.processIdentifier != NSRunningApplication.current.processIdentifier
+        else { throw .noTarget }
+        // The non-activating palette leaves its external target frontmost.
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else {
+            throw .focusChanged
+        }
+        return app
+    }
+
+    @MainActor
+    static func prepareHistoryPaste(
+        _ item: ClipboardItem, store: ClipboardStore, into app: NSRunningApplication?,
+        plainText: Bool, on pb: NSPasteboard = .general
+    ) throws(HistoryPasteFailure) -> (target: NSRunningApplication, changeCount: Int) {
+        let target = try checkHistoryPasteTarget(app)
+        if plainText {
+            guard let text = item.plainText, writeString(text, to: pb) else { throw .unavailable }
+        } else {
+            guard write(item, store: store, to: pb) else { throw .unavailable }
+        }
+        return (target, pb.changeCount)
+    }
+
+    /// Throw if the shortcut cannot be posted. Posting does not confirm that the receiver pasted.
+    @MainActor
+    static func postHistoryPaste(into app: NSRunningApplication, changeCount: Int)
+        throws(HistoryPasteFailure)
+    {
+        _ = try checkHistoryPasteTarget(app)
+        guard NSPasteboard.general.changeCount == changeCount else { throw .clipboardChanged }
+        guard sendCommand(key: CGKeyCode(kVK_ANSI_V), toPid: app.processIdentifier) else {
+            throw .eventCreationFailed
+        }
     }
 
     /// Put the item on the pasteboard without pasting; the marker stops re-capture.
     @MainActor @discardableResult
-    static func copy(_ item: ClipboardItem, store: ClipboardStore) -> Bool {
-        guard write(item, store: store) else { return false }
+    static func copy(_ item: ClipboardItem, store: ClipboardStore, to pb: NSPasteboard = .general) -> Bool {
+        guard write(item, store: store, to: pb) else { return false }
         store.promote(item)
         return true
     }
@@ -53,7 +75,7 @@ enum Paster {
         return pb.setString(text, forType: .string)
     }
 
-    /// String counterpart of `paste`, marker-stamped so the text doesn't re-enter history.
+    /// Marker-stamped so the text doesn't re-enter history.
     @MainActor
     static func pasteString(_ text: String, previousApp: NSRunningApplication?) {
         writeString(text)
@@ -77,7 +99,7 @@ enum Paster {
         writeString(text)
     }
 
-    /// String counterpart of `pasteInPlace`; the palette stays frontmost.
+    /// Paste a string directly into the target while the palette stays frontmost.
     @MainActor
     static func pasteStringInPlace(_ text: String, into app: NSRunningApplication?) {
         writeString(text)
@@ -87,27 +109,13 @@ enum Paster {
         }
     }
 
-    @MainActor
-    private static func writeString(_ text: String) {
-        let pb = NSPasteboard.general
+    @MainActor @discardableResult
+    private static func writeString(_ text: String, to pb: NSPasteboard = .general) -> Bool {
         pb.clearContents()
         pb.declareTypes([.string, ClipboardManager.internalType], owner: nil)
-        pb.setString(text, forType: .string)
+        let written = pb.setString(text, forType: .string)
         pb.setData(Data(), forType: ClipboardManager.internalType)
-    }
-
-    /// Paste into `app` without activating or promoting, so the palette and its rows hold still.
-    @MainActor @discardableResult
-    static func pasteInPlace(
-        _ item: ClipboardItem, store: ClipboardStore, into app: NSRunningApplication?
-    ) -> Bool {
-        guard write(item, store: store) else { return false }
-        if let pid = app?.processIdentifier {
-            DispatchQueue.main.asyncAfter(deadline: .now() + directPostDelay) {
-                postCommandV(toPid: pid)
-            }
-        }
-        return true
+        return written
     }
 
     /// Whether anything was written; a vanished item leaves the pasteboard untouched.
@@ -160,11 +168,16 @@ enum Paster {
     @MainActor
     private static func postCommand(key: CGKeyCode, toPid pid: pid_t?) {
         guard Permissions.ensureAccessibility() else { return }
+        _ = sendCommand(key: key, toPid: pid)
+    }
+
+    @MainActor
+    private static func sendCommand(key: CGKeyCode, toPid pid: pid_t?) -> Bool {
         let source = CGEventSource(stateID: .combinedSessionState)
 
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
             let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
-        else { return }
+        else { return false }
 
         down.flags = .maskCommand
         up.flags = .maskCommand
@@ -178,5 +191,6 @@ enum Paster {
             down.post(tap: .cghidEventTap)
             up.post(tap: .cghidEventTap)
         }
+        return true
     }
 }

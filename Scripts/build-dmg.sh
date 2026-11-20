@@ -1,8 +1,8 @@
 #!/bin/bash
 # Developer-only LOCAL DMG for testing on your own machines.
 # Signed with the "Tinycast Self-Signed" identity — NOT distributable.
-# Public releases are built by GitHub Actions (release.yml) with a Developer ID
-# Application certificate (team J656U8XZ93), notarized by Apple, and stapled.
+# Public releases are built by GitHub Actions (release.yml) with the pinned
+# "SpeechCast Release Signing" self-signed certificate; see docs/signing.md.
 set -euo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
@@ -37,4 +37,4 @@ ln -s /Applications "$STAGE/Applications"
 rm -f "$DMG"
 diskutil image create from "$STAGE" --format UDZO --volumeName "SpeechCast Local" "$DMG" >/dev/null
 
-echo "✓ $DMG (developer-only local build: self-signed, not notarized, NOT distributable — public releases are Developer ID-signed and notarized in CI)"
+echo "✓ $DMG (developer-only local build: self-signed, not release-pinned, NOT distributable — public releases are signed with the pinned release certificate in CI)"

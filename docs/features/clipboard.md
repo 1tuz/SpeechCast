@@ -411,8 +411,14 @@ section, so `promote` skips pinned rows instead of rewriting the row and its FTS
 visible change.
 
 Paste and Keep Window Open (⌥↵) does not promote any entry. The rows hold still under the
-selection, so ↓ then ⌥↵ pastes a run of entries in order. `Paster.write` therefore only writes the
-pasteboard; `paste` and `copy` promote after it, and `pasteInPlace` does not.
+selection, so ↓ then ⌥↵ pastes a run of entries in order. Paste and Paste as Plain Text promote
+after posting the shortcut, and Copy promotes after writing the pasteboard.
+
+History paste needs Accessibility access. If macOS denies access, Tinycast leaves the palette and
+pasteboard alone and offers to open Accessibility settings. After a reinstall, remove the old
+Tinycast entry and add the installed app again if Settings already lists it. Copy does not need
+Accessibility. If the target app loses focus or another copy replaces the prepared entry before
+posting, Tinycast cancels the shortcut. Posting ⌘V does not confirm that the app accepted it.
 
 The ten palette slots shared with launcher favorites address this visible Pinned block too. A slot
 uses the current query and type filter, so its first entry is the first visible pin; a missing slot is
@@ -520,9 +526,9 @@ session begins.
 ## Paste Sequentially
 
 A command, so it is bound in Settings ▸ Clipboard like any other. Each press pastes the next older
-entry — text, image or file — into `PaletteCoordinator.targetApp` through `Paster.pasteInPlace`:
-⌘V goes to that app's pid, and nothing is activated or promoted. An image or file gone from disk
-writes nothing, so the same press moves on to the next entry.
+entry — text, image or file — to `PaletteCoordinator.targetApp`. Tinycast sends ⌘V to that app's
+PID only if it is still frontmost. It does not activate the app or promote the entry. If an image
+or file is gone from disk, the same press moves on to the next entry without writing it.
 
 **A press drains the poller before it writes**, through `prepareForTinycastPasteboardMutation`. A
 copy made inside the 0.5s poll interval would otherwise be overwritten unrecorded, and the walk
@@ -535,6 +541,6 @@ same; either starts the walk over from the newest entry. Past the oldest entry a
 any other Tinycast paste.
 
 **A press within `PasteSequence.settleInterval` (0.25s) of the last paste is dropped, not queued.**
-`pasteInPlace` writes the pasteboard at once and posts ⌘V 50ms later, and the target reads the
-pasteboard only when it handles that ⌘V. A press inside that gap would swap the pasteboard first:
-one entry pasted twice, another skipped. A queue would replay a held shortcut as a burst.
+Tinycast writes the pasteboard, then waits briefly before posting ⌘V. The target reads the
+pasteboard only when it handles the shortcut. A press in that gap could replace the entry too
+soon. A queue would replay a held shortcut as a burst.

@@ -46,6 +46,7 @@ enum SpeechVoiceCommandParser {
     enum Resolution: Equatable, Sendable {
         case notCommand
         case unknown(String)
+        case invalidWindowCommand(String)
         case ambiguous([Target])
         case action(Intent)
     }
@@ -73,6 +74,15 @@ enum SpeechVoiceCommandParser {
         var closes: Bool = false
     }
 
+    private static let nudgePrefixes = [
+        "сдвинь", "перемести", "подвинь", "передвинь", "двинь",
+        "сдвинуть", "переместить", "подвинуть", "передвинуть", "двинуть"
+    ].map { "\($0) окно" }
+
+    private static func nudgePhrases(_ direction: String) -> [String] {
+        nudgePrefixes.map { "\($0) \(direction)" }
+    }
+
     // The same declarations drive both parsing and the in-app voice command catalog.
     private static let builtinPatterns: [Pattern] = [
         .init(section: "Окна", title: "На правую половину", phrases: [
@@ -85,12 +95,10 @@ enum SpeechVoiceCommandParser {
             "окно на левую половину", "помести окно на левую половину",
             "перемести окно на левую половину", "левая половина экрана"
         ], intent: .window("left-half"), feature: "windows"),
-        .init(section: "Окна", title: "Сдвинуть вправо", phrases: [
-            "перемести окно вправо", "сдвинь окно вправо"
-        ], intent: .window("move-right"), feature: "windows"),
-        .init(section: "Окна", title: "Сдвинуть влево", phrases: [
-            "перемести окно влево", "сдвинь окно влево"
-        ], intent: .window("move-left"), feature: "windows"),
+        .init(section: "Окна", title: "Сдвинуть вправо", phrases: nudgePhrases("вправо"),
+              intent: .window("move-right"), feature: "windows"),
+        .init(section: "Окна", title: "Сдвинуть влево", phrases: nudgePhrases("влево"),
+              intent: .window("move-left"), feature: "windows"),
         .init(section: "Окна", title: "Развернуть окно", phrases: [
             "разверни окно", "максимизируй окно", "увеличь окно на весь экран"
         ], intent: .window("maximize"), feature: "windows"),
@@ -212,12 +220,10 @@ enum SpeechVoiceCommandParser {
         .init(section: "Окна", title: "Полноэкранный режим", phrases: [
             "переключи полноэкранный режим", "полноэкранный режим окна"
         ], intent: .window("toggle-fullscreen"), feature: "windows"),
-        .init(section: "Окна", title: "Сдвинуть вверх", phrases: [
-            "сдвинь окно вверх", "перемести окно вверх"
-        ], intent: .window("move-up"), feature: "windows"),
-        .init(section: "Окна", title: "Сдвинуть вниз", phrases: [
-            "сдвинь окно вниз", "перемести окно вниз"
-        ], intent: .window("move-down"), feature: "windows"),
+        .init(section: "Окна", title: "Сдвинуть вверх", phrases: nudgePhrases("вверх"),
+              intent: .window("move-up"), feature: "windows"),
+        .init(section: "Окна", title: "Сдвинуть вниз", phrases: nudgePhrases("вниз"),
+              intent: .window("move-down"), feature: "windows"),
         .init(section: "Система", title: "Показать рабочий стол", phrases: [
             "покажи рабочий стол", "скрой все окна"
         ], intent: .system("show-desktop")),
@@ -431,6 +437,16 @@ enum SpeechVoiceCommandParser {
 
         if let intent = phraseIndex[phrase] {
             return .action(intent)
+        }
+        // Allow leading politeness only for directional moves, after checking explicit AI triggers.
+        let politePrefix = "пожалуйста "
+        let windowPhrase = phrase.hasPrefix(politePrefix) ? String(phrase.dropFirst(politePrefix.count)) : phrase
+        if windowPhrase != phrase, case .window(let id)? = phraseIndex[windowPhrase], id.hasPrefix("move-") {
+            return .action(.window(id))
+        }
+        // A bare move request needs a direction. Do not consume arbitrary speech after the verb.
+        if nudgePrefixes.contains(windowPhrase) {
+            return .invalidWindowCommand("Укажи направление: влево, вправо, вверх или вниз")
         }
         if let focus = parseFocus(phrase) { return focus }
 

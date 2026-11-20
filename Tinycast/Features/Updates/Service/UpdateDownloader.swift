@@ -61,13 +61,31 @@ private final class Delegate: NSObject, URLSessionDownloadDelegate, @unchecked S
         _ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL
     ) {
         let status = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 else {
+        // 0 is a file URL's answer: no server spoke, so no status can be checked.
+        guard status == 200 || status == 0 else {
             events.finish(
                 throwing: UpdateFailure.downloadFailed(String(localized: "The server answered \(status).")))
             return
         }
         do {
             // The temp file is unlinked the moment this returns, so the move has to happen here.
+            let size = (try? FileManager.default.attributesOfItem(atPath: location.path)[.size]
+                as? Int64) ?? 0
+            // Zero bytes is never a release, and a size disagreeing with the published one
+            // means the transfer was truncated or the release changed under us.
+            guard size > 0 else {
+                events.finish(
+                    throwing: UpdateFailure.downloadFailed(
+                        String(localized: "The download came back empty.")))
+                return
+            }
+            if expected > 0, size != expected {
+                events.finish(
+                    throwing: UpdateFailure.downloadFailed(
+                        String(
+                            localized: "The download is \(size) bytes, not the \(expected) published.")))
+                return
+            }
             try? FileManager.default.removeItem(at: destination)
             try FileManager.default.moveItem(at: location, to: destination)
             events.yield(.finished(destination))

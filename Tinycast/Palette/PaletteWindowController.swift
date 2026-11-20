@@ -218,11 +218,6 @@ final class PaletteWindowController: NSObject, NSWindowDelegate {
         return true
     }
 
-    @discardableResult
-    func pasteKeepingWindowOpen(_ item: ClipboardItem, store: ClipboardStore) -> Bool {
-        Paster.pasteInPlace(item, store: store, into: previousApp)
-    }
-
     func pasteStringKeepingWindowOpen(_ text: String) {
         Paster.pasteStringInPlace(text, into: previousApp)
     }

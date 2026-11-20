@@ -11,7 +11,7 @@ SpeechCast is a native macOS command center built on the open-source
 keyboard-first interface while expanding beyond app launching into voice commands,
 local speech recognition, automation, AI actions, and developer utilities.
 
-[Releases](https://github.com/1tuz/tinycast/releases) ·
+[Releases](https://github.com/1tuz/SpeechCast/releases) ·
 [Installation](INSTALL.md) · [Speech Runtime](https://github.com/1tuz/Speech-Runtime) ·
 [Upstream Tinycast](https://github.com/abue-ammar/tinycast)
 
@@ -42,8 +42,8 @@ must be running for its voice-to-text integration.
 | Primary focus | Small native launcher | Universal command surface, including voice |
 | Speech | Upstream speech features | Separate, local **Speech Runtime** integration |
 | Voice actions | Upstream behavior | Command routing, aliases, and system intents |
-| Updates | Upstream releases | Releases and updates from `1tuz/tinycast` |
-| Source | [`abue-ammar/tinycast`](https://github.com/abue-ammar/tinycast) | [`1tuz/tinycast`](https://github.com/1tuz/tinycast) |
+| Updates | Upstream releases | Releases and updates from `1tuz/SpeechCast` |
+| Source | [`abue-ammar/tinycast`](https://github.com/abue-ammar/tinycast) | [`1tuz/SpeechCast`](https://github.com/1tuz/SpeechCast) |
 
 This is an independent fork, not a rebranding of the upstream project.
 The original authors' credit and the AGPL-3.0 license are retained.
@@ -52,21 +52,18 @@ The fork periodically incorporates upstream changes through the `.1tuz/` patch q
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | VOICECAST_STRIP_QUARANTINE=1 /bin/bash
+curl -fsSL https://raw.githubusercontent.com/1tuz/SpeechCast/main/Scripts/install.sh | /bin/bash
 ```
 
-Alternatively, download the `SpeechCast-<version>.dmg` attached to a
-[GitHub Release](https://github.com/1tuz/tinycast/releases).
-See [INSTALL.md](INSTALL.md) for details and migration from Tinycast.
+The installer fetches the current signed DMG from
+[GitHub Releases](https://github.com/1tuz/SpeechCast/releases). It verifies the pinned SpeechCast
+certificate, the DMG and application seals, and the bundle ID before installing. It clears
+quarantine only on the verified installed copy. Gatekeeper stays enabled. No Xcode or Command
+Line Tools are required.
 
-Releases are signed with a **Developer ID Application** certificate (team `J656U8XZ93`) and
-**notarized by Apple**, so a downloaded release passes Gatekeeper on first launch — no warning,
-no confirmation step. The installer verifies the Developer ID chain, the stapled notarization
-ticket and `spctl` acceptance before installing, and the one-liner above also clears the
-quarantine flag on the installed copy as a fallback if Gatekeeper still refuses the download.
-Gatekeeper itself stays enabled. Point the same installer at a local self-signed DMG and it warns,
-then clears the quarantine flag on the copy it installs, because such a build can never pass
-Gatekeeper at all.
+Public releases use one persistent self-signed certificate and are not Apple notarized. Use the
+installer for the first installation or the one-time migration from the old signing system;
+subsequent updates use SpeechCast's native update window. See [INSTALL.md](INSTALL.md).
 
 ## Build from source
 
@@ -84,14 +81,13 @@ Release distribution — the CI signing secrets and runbook — is described in
 
 ## Compatibility
 
-The app intentionally retains bundle ID `com.tinycast.app`, existing preference locations,
-backup format, and `tinycast://` links during the transition. This avoids silently losing
-settings and allows existing installations to keep updating. The updater's `BundleSignature`
-check accepts the pinned Developer ID requirement (team `J656U8XZ93`), and the last pre-switch
-release already carries that same check, so an old Tinycast updates into SpeechCast in place; the
-leaf branch below it keeps locally signed builds updatable. The user-facing app and release
-artifact names are **SpeechCast**, and `Scripts/install.sh` renames an existing
-`Tinycast.app` to `SpeechCast.app`.
+The app retains bundle ID `com.tinycast.app`, existing preference locations, backup format and
+`tinycast://` links. The installer migrates `Tinycast.app` and `VoiceCast.app` to `SpeechCast.app`
+without deleting user data. The updater accepts only the pinned release certificate.
+
+Changing from an older certificate requires one installation through the script and can require
+one-time permission grants in macOS. A stable bundle ID alone does not guarantee that TCC grants
+survive a certificate change. See [the migration runbook](docs/speechcast-distribution.md).
 
 ## License and attribution
 

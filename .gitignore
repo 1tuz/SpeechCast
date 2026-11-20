@@ -57,6 +57,11 @@ node_modules/
 *.swp
 *.tmp
 *.orig
+# Signing exports and private keys never belong in source control.
+*.p12
+*.pfx
+*.key
+*-password.txt
 # Website (Next.js). `out/` is the static export, `.source/` is generated from
 # content/docs by fumadocs-mdx on install and build, `.wrangler/` is local deploy state.
 website/.next/

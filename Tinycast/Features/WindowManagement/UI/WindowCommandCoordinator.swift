@@ -243,12 +243,13 @@ final class WindowCommandCoordinator {
         self.core = core
     }
 
-    func runWindowCommand(id: WindowCommand.ID) {
+    func runWindowCommand(id: WindowCommand.ID, voiceFeedback: Bool = false) {
         guard settings.windowManagementEnabled else { return }
         switch SharedWindowManagerBridge.resolve() {
-        case .native: runNative(id)
+        case .native: runNative(id, voiceFeedback: voiceFeedback)
         case .unavailable(let message): core.showMessage(message, tone: .danger)
-        case .external(let backend, let executable): runShared(id, backend: backend, executable: executable)
+        case .external(let backend, let executable):
+            runShared(id, backend: backend, executable: executable, voiceFeedback: voiceFeedback)
         }
     }
 
@@ -265,27 +266,48 @@ final class WindowCommandCoordinator {
                 paletteCoordinator.hidePalette(restoreFocus: moveWindow)
             }
             runCLI(SharedWindowManagerBridge.workspace(number, moveWindow: moveWindow, backend: backend),
-                   executable: executable, afterFocusRestore: moveWindow)
+                   executable: executable, afterFocusRestore: moveWindow, voiceFeedback: true)
         }
     }
 
-    private func runNative(_ id: WindowCommand.ID) {
+    private func runNative(_ id: WindowCommand.ID, voiceFeedback: Bool) {
         if let direction = SpaceDirection(id) {
             if paletteCoordinator.isVisible { paletteCoordinator.hidePalette(restoreFocus: false) }
             spaceSwitcher.perform(direction)
             return
         }
-        windowMover.perform(
-            id, target: handOffTarget(), gap: CGFloat(settings.windowGap),
-            cycle: settings.windowCycle)
+        placeWindow(id, target: handOffTarget(), voiceFeedback: voiceFeedback)
+    }
+
+    private func placeWindow(_ id: WindowCommand.ID, target: WindowTarget?, voiceFeedback: Bool) {
+        let outcome = windowMover.perform(
+            id, target: target, gap: CGFloat(settings.windowGap), cycle: settings.windowCycle,
+            requireReadback: voiceFeedback)
+        guard voiceFeedback else { return }
+        switch outcome {
+        case .changed:
+            let message = WindowCommandCatalog.movesOnly.contains(id)
+                ? String(localized: "Window moved") : String(localized: "Window changed")
+            core.showMessage(message)
+        case .unchanged:
+            core.showMessage(String(localized: "Window unchanged"), tone: .neutral)
+        case .accepted:
+            showVoiceCommandAccepted()
+        case .failed:
+            core.showMessage(String(localized: "Could not apply or verify the window command"), tone: .danger)
+        }
+    }
+
+    private func showVoiceCommandAccepted() {
+        core.showMessage(String(localized: "Command accepted"), tone: .neutral)
     }
 
     private func runShared(_ id: WindowCommand.ID, backend: SharedWindowManagerBridge.Backend,
-                           executable: String) {
+                           executable: String, voiceFeedback: Bool) {
         let command = SharedWindowManagerBridge.command(id, for: backend)
         if id == .previousSpace || id == .nextSpace {
             if paletteCoordinator.isVisible { paletteCoordinator.hidePalette(restoreFocus: false) }
-            if let command { runCLI(command, executable: executable) }
+            if let command { runCLI(command, executable: executable, voiceFeedback: voiceFeedback) }
             return
         }
         let target = handOffTarget()
@@ -299,9 +321,7 @@ final class WindowCommandCoordinator {
                     let floating = try await SharedWindowManagerBridge.focusedWindowIsFloating(
                         backend: backend, executable: executable)
                     if floating {
-                        self.windowMover.perform(
-                            id, target: target, gap: CGFloat(self.settings.windowGap),
-                            cycle: self.settings.windowCycle)
+                        self.placeWindow(id, target: target, voiceFeedback: voiceFeedback)
                         return
                     }
                 }
@@ -312,17 +332,23 @@ final class WindowCommandCoordinator {
                     return
                 }
                 _ = try await SharedWindowManagerBridge.execute(command, executable: executable)
+                if voiceFeedback { self.showVoiceCommandAccepted() }
             } catch {
                 self.core.showMessage(error.localizedDescription, tone: .danger)
             }
         }
     }
 
-    private func runCLI(_ args: [String], executable: String, afterFocusRestore: Bool = false) {
+    private func runCLI(_ args: [String], executable: String, afterFocusRestore: Bool = false,
+                        voiceFeedback: Bool) {
         Task { [weak self] in
             if afterFocusRestore { try? await Task.sleep(for: .milliseconds(120)) }
-            do { _ = try await SharedWindowManagerBridge.execute(args, executable: executable) }
-            catch { self?.core.showMessage(error.localizedDescription, tone: .danger) }
+            do {
+                _ = try await SharedWindowManagerBridge.execute(args, executable: executable)
+                if voiceFeedback { self?.showVoiceCommandAccepted() }
+            } catch {
+                self?.core.showMessage(error.localizedDescription, tone: .danger)
+            }
         }
     }
 

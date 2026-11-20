@@ -5,27 +5,27 @@ SpeechCast requires macOS 26 or later on Apple silicon.
 ## Install a verified release
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | VOICECAST_STRIP_QUARANTINE=1 /bin/bash
+curl -fsSL https://raw.githubusercontent.com/1tuz/SpeechCast/main/Scripts/install.sh | /bin/bash
 ```
 
-The installer fetches the newest stable `SpeechCast-*.dmg` from
-[`1tuz/tinycast` Releases](https://github.com/1tuz/tinycast/releases), verifies that it is signed
-with the **Developer ID Application** certificate for team `J656U8XZ93` (bundle id
-`com.tinycast.app`, hardened runtime), carries a stapled notarization ticket, and passes
-`spctl` Gatekeeper assessment — then places `SpeechCast.app` in `/Applications` or
-`~/Applications`. The command above (`VOICECAST_STRIP_QUARANTINE=1`) also clears the quarantine
-flag on that installed copy, so the app launches even if Gatekeeper still refuses the download;
-Gatekeeper itself stays on. It also requests no root access and needs no Xcode.
-SpeechCast is **Developer ID-signed and notarized by Apple**: a downloaded release passes Gatekeeper
-on first launch with no warning and no confirmation step. Drag it out of the DMG (or run the
-installer above) and open it normally.
+The installer downloads the current release from `1tuz/SpeechCast`. It verifies the signed DMG
+before mounting it, then checks the application seal, the pinned SpeechCast certificate and
+bundle ID `com.tinycast.app`. It uses `/Applications` when writable, otherwise `~/Applications`.
+No Xcode, Command Line Tools, paid Apple account or root access is needed.
 
-Existing `/Applications/Tinycast.app` installations are migrated to
-`/Applications/SpeechCast.app` when writable. The bundle identifier remains
-`com.tinycast.app`, preserving existing app data, permissions and update compatibility: the last
-pre-switch release already carries the same `BundleSignature` Developer ID check, so its in-app
-updater accepts the new build, and the installer migrates an old `Tinycast.app` in place with its
-settings intact.
+Public builds use one persistent self-signed code-signing certificate. They are not Apple
+notarized. A browser download followed by dragging the app out of the DMG can trigger Gatekeeper.
+Use the command above: it removes quarantine only from the verified installed copy and leaves
+Gatekeeper enabled. No manual `xattr` command is needed.
+
+The installer replaces an existing `SpeechCast.app`, `VoiceCast.app` or `Tinycast.app` without
+deleting settings or user data. Quit the old app before installing. It stages the replacement
+and restores the previous application if installation fails.
+
+An older app cannot learn a new certificate through its existing updater. Run the installer once
+to migrate to this signing system. Later releases use the same certificate and install through
+SpeechCast's native update window. macOS can require one-time permission grants after the
+certificate changes. See [the migration runbook](docs/speechcast-distribution.md).
 
 ## Source builds
 
@@ -37,10 +37,7 @@ xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Release \
   -derivedDataPath build/DerivedData build
 ```
 
-The resulting local `SpeechCast.app` is for development: contributors build with the local
-`Tinycast Self-Signed` identity, which cannot be Developer ID-signed or notarized —
-only the CI build is. Installing such a DMG needs no manual step either: run
-`Scripts/install.sh` with `VOICECAST_DMG=<path.dmg>` and it warns that the build is not a
-Developer ID build, then clears the quarantine flag on the copy it installs. Gatekeeper itself
-stays enabled. See [docs/signing.md](docs/signing.md) for the local signing identity and
-[docs/speechcast-distribution.md](docs/speechcast-distribution.md) for GitHub Releases.
+Source builds use a contributor's local signing identity. The public installer deliberately
+rejects those builds: only the pinned release certificate is accepted. Do not distribute a
+locally generated identity as SpeechCast. See [docs/signing.md](docs/signing.md) for certificate
+setup and [docs/speechcast-distribution.md](docs/speechcast-distribution.md) for release operations.

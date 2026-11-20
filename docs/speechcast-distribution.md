@@ -1,169 +1,59 @@
 # SpeechCast distribution runbook
 
-This is the authoritative guide for public SpeechCast releases. The local
-development identity is in [signing.md](signing.md); the general release flow
-is in [release.md](release.md).
+SpeechCast ships native Swift app updates through GitHub Releases in `1tuz/SpeechCast`. The persistent self-signed release certificate authenticates the app, helpers and DMG. See [signing.md](signing.md) for the pin and trust model.
 
-SpeechCast ships **Developer ID-signed and notarized**. Releases are signed
-with the team's **Developer ID Application** certificate for team
-**`J656U8XZ93`** (bundle id `com.tinycast.app`), built
-with the hardened runtime and a secure timestamp, notarized by Apple, and
-verified by `Scripts/verify-release.sh`. A downloaded release passes Gatekeeper on first launch:
-no warning and no confirmation step.
-
-The public installer always verifies before copying: a Developer ID app that
-fails the team check, the stapled ticket or `spctl` aborts the install, and
-Gatekeeper itself stays enabled system-wide. The published one-liner passes
-`VOICECAST_STRIP_QUARANTINE=1`, which clears the quarantine flag on the copy it
-has just installed after that verification — a fallback so a blocked download
-still launches. `spctl --master-disable` never appears anywhere in the
-repository, and the release pipeline (`release.yml`, `build-dmg.sh`,
-`release-notes.sh`) never strips a quarantine attribute.
-
-A local, self-signed DMG (see [signing.md](signing.md)) can never satisfy
-Gatekeeper. For that build only, `Scripts/install.sh` prints a warning and
-clears the quarantine flag on the copy it has just installed, so testing a
-local build also needs no manual `xattr` command.
-
-When the newest stable release carries no `SpeechCast-*.dmg`, the installer
-falls back to the newest published build that does — a pre-release — and says
-so before downloading. The same verification runs, so a pre-release signed
-with the local identity installs only through the guarded fallback above.
-
-The release workflow (`.github/workflows/release.yml`) is manually triggered
-and **fails before publishing anything** when any of the six secrets is
-missing or when the verification fails. Every publish is gated by two jobs on
-fresh macOS runners: `verify-install` stamps a real Safari quarantine flag on
-the DMG, leaves Gatekeeper enabled, installs the copy and asserts the seal,
-bundle id, hardened runtime, the Developer ID chain, the stapled ticket and
-`spctl` acceptance; `verify-upgrade` installs the previous published release,
-upgrades it in place through `Scripts/install.sh`, and proves the settings file
-and bundle id survive and the old `Tinycast.app` is gone.
-
-## GitHub Actions secrets
-
-Configure these six repository Actions secrets in `1tuz/tinycast`
-(**Settings → Secrets and variables → Actions**):
-
-| Secret | Value |
-|---|---|
-| `DEVELOPER_ID_APPLICATION_P12_BASE64` | Base64 of the `.p12` export of the **Developer ID Application** certificate (team `J656U8XZ93`) **including its private key** |
-| `DEVELOPER_ID_APPLICATION_P12_PASSWORD` | Password used to export the `.p12` |
-| `APPLE_TEAM_ID` | `J656U8XZ93` |
-| `APPSTORE_API_KEY_ID` | App Store Connect API key ID, used by `notarytool` |
-| `APPSTORE_ISSUER_ID` | App Store Connect API key issuer ID |
-| `APPSTORE_API_PRIVATE_KEY_BASE64` | Base64 of the API key's `.p8` private key |
-
-If any is missing, the workflow fails before publishing. There is no
-fallback to an unsigned, ad-hoc or non-notarized build.
-
-How to produce each value is documented in
-[signing.md](signing.md) §2: export the Developer ID `.p12` from Keychain
-Access and base64 it; create a **Team API key** with Developer access in
-App Store Connect (**Users and Access → Integrations**), whose `.p8` is a
-one-time download, and base64 that. No secret value ever enters the repo or
-a log — only the names. A leaked value must be revoked and rotated
-(re-issue the certificate or key, re-export, and update the secrets).
-
-## What the workflow does with them
-
-After importing the `.p12` into an ephemeral keychain that it deletes
-afterwards, the workflow signs the app and every embedded executable with
-the Developer ID Application certificate — `CODE_SIGN_STYLE=Manual`,
-`DEVELOPMENT_TEAM=J656U8XZ93`, hardened runtime, and
-`OTHER_CODE_SIGN_FLAGS="--options runtime --timestamp"` — creates the ZIP
-and DMG, submits the build to Apple's notary service with
-`xcrun notarytool submit --wait` using the App Store Connect API key,
-requires status `Accepted`, staples the ticket to the `.app` and then to
-the `.dmg`, runs `Scripts/verify-release.sh` on both, runs the
-`verify-install` job on a fresh runner, and only then publishes.
-
-## Validation commands
-
-On macOS, inspect a packaged release:
+## Install
 
 ```sh
-# .app — signature is intact and deep-verifies
-codesign --verify --deep --strict --verbose=2 /Applications/SpeechCast.app
-
-# .app — the Developer ID Application chain and TeamIdentifier J656U8XZ93
-codesign -dv --verbose=4 /Applications/SpeechCast.app 2>&1 | grep -E 'Authority|TeamIdentifier|Timestamp'
-
-# .app — flags include the hardened runtime, and no get-task-allow
-codesign -dv --verbose=4 /Applications/SpeechCast.app 2>&1 | grep -E 'flags|get-task'
-
-# .app — Gatekeeper accepts it
-spctl -a -vvv -t exec /Applications/SpeechCast.app
-
-# .app — the notarization ticket is stapled and validates offline
-xcrun stapler validate /Applications/SpeechCast.app
+curl -fsSL https://raw.githubusercontent.com/1tuz/SpeechCast/main/Scripts/install.sh | /bin/bash
 ```
 
-Expected results: `Authority=Developer ID Application: … (J656U8XZ93)`,
-`TeamIdentifier=J656U8XZ93`, a `Timestamp` line, a `flags` line containing
-`runtime`, no `get-task-allow`, `spctl` reporting
-`accepted\nsource=Notarized Developer ID`, and `stapler` reporting
-`The validate action worked!`. `Scripts/verify-release.sh app <path.app>`
-and `Scripts/verify-release.sh dmg <path.dmg>` run all of this — plus the
-bundle id, the version, the embedded helper executables under
-`Contents/Helpers`, and a read-only DMG mount — in one command, and fail
-the release on any mismatch.
+The standalone installer uses tools supplied by macOS; users do not need Xcode or Command Line Tools. It verifies the signed DMG before mounting, then verifies the application, nested code, pinned certificate and `com.tinycast.app` bundle ID. Only after verification does it install and clear quarantine on its installed copy. Gatekeeper and SIP remain enabled. The script does not use a privileged helper or delete settings.
 
-## Clean-Mac manual install checklist
+A self-signed certificate does not make a quarantined app Apple-trusted. Download-and-drag installation can be blocked by Gatekeeper. The supported initial install is the script above. Subsequent releases install through the native update window.
 
-Do this on a Mac with no prior Tinycast/SpeechCast install:
+## Initial secret provisioning
 
-1. Download `SpeechCast-<version>.dmg` from GitHub Releases.
-2. Open (mount) the DMG and drag SpeechCast to `/Applications`.
-3. Eject the DMG, then launch SpeechCast from `/Applications` normally —
-   it opens straight away. Gatekeeper accepts the notarized, stapled,
-   Developer ID-signed build; no confirmation dialog is expected.
-4. SpeechCast launches normally on every launch.
+The matching certificate export and password are stored locally in ignored `build/signing/SpeechCast.p12` and `build/signing/p12-password.txt`. These files are not release artifacts. Back them up outside disposable build storage. Transfer the values directly into repository Actions secrets without printing them:
 
-`Scripts/install.sh` is the same path scripted: download, verify, install.
-Disabling Gatekeeper globally — `spctl --master-disable` — must never happen
-and must never be recommended. Deleting quarantine attributes by hand is
-never needed: the published command clears the flag on the installed copy as
-part of the install, and the installer handles local self-signed builds on its
-own, as described above.
+```sh
+base64 -i build/signing/SpeechCast.p12 | tr -d '\n' | gh secret set SPEECHCAST_SIGNING_P12_BASE64 --repo 1tuz/SpeechCast
+gh secret set SPEECHCAST_SIGNING_P12_PASSWORD --repo 1tuz/SpeechCast < build/signing/p12-password.txt
+```
 
-## Updating from an old pre-switch Tinycast
+| Secret | Value |
+| --- | --- |
+| `SPEECHCAST_SIGNING_P12_BASE64` | Base64 of the existing password-encrypted `.p12`, including its private key |
+| `SPEECHCAST_SIGNING_P12_PASSWORD` | The export password for that exact `.p12` |
 
-- **The bundle id stays `com.tinycast.app`.** The new SpeechCast build is the
-  same app to macOS and to the updater, so no re-activation or migration step
-  is needed.
-- **Settings survive.** Preferences and application-support data live under
-  the unchanged bundle id, so an existing user's configuration carries over
-  into SpeechCast.
-- **The old app accepts the new release.** `BundleSignature` checks the
-  Developer ID branch first: the designated requirement pinned to team
-  `J656U8XZ93`, which every new release satisfies. The last pre-switch release
-  already shipped that branch, so its in-app updater accepts the Developer ID
-  build. The leaf fallback below it accepts a bundle signed with the running
-  app's own leaf — local self-signed builds — and is not what admits the new
-  release. Do not remove either check. An in-app update keeps the old
-  `Tinycast.app` folder name in `/Applications` (the app inside is SpeechCast);
-  `Scripts/install.sh` installs it as `SpeechCast.app` and removes the old
-  folder.
-- **TCC.** A pre-switch copy re-prompts where the signing path changed; the
-  bundle id stays `com.tinycast.app`, so preferences, caches and the login
-  item carry over untouched.
+The workflow's repository `GITHUB_TOKEN` handles release publication. No Apple secrets are required. Former `DEVELOPER_ID_APPLICATION_*`, `APPLE_TEAM_ID` and `APPSTORE_*` secrets are unused and can be removed after migration. Do not regenerate the certificate to configure a missing secret.
 
-The CI `verify-install` job runs the clean-Mac path on a fresh macOS
-runner — quarantine the DMG, mount, verify, install — including the Developer
-ID, ticket and `spctl` assertions, and `verify-upgrade` proves the in-place
-upgrade from the previous release. A physical Mac with no prior install is
-still worth one manual pass per major macOS release; the checklist above is
-the script for it.
+For a future explicitly approved signing generation, use the one-time `Scripts/create-signing-certificate.sh` generator. Review its usage and update all public pins together. That is a certificate migration, not routine release preparation. A new certificate cannot update apps that trust only the previous pin.
 
-## Rebranding facts
+## Release gates
 
-- The app product is named SpeechCast, but the bundle id remains
-  `com.tinycast.app` (deliberate, for update compatibility).
-- Two helper executables ship inside `Contents/Helpers`:
-  `ClipboardTextHelper` and `FileIndexHelper`. Both are signed with the
-  Developer ID Application certificate and carry the hardened runtime
-  exactly like the main executable.
-- Assets published per release: `SpeechCast-<version>.dmg` (the notarized
-  installer the updater and hand downloaders use) and
-  `SpeechCast-<version>.zip` (an extra artifact). See [release.md](release.md).
+The workflow accepts a version tag or a manual version. Supported forms include `v0.11.1`, `v0.11.1-beta` and `v0.11.1-beta.1`. The prerelease flag must agree with the tag. Release builds target Apple Silicon and retain bundle ID `com.tinycast.app`.
+
+The build imports the encrypted certificate into a temporary keychain, checks it against the committed public certificate, builds with the hardened runtime and signs every executable. It packages a signed DMG and a ZIP that preserves bundle metadata. Release metadata and checksums describe the exact shipping bytes. Checksums do not replace certificate verification.
+
+Installation and update gates run on fresh macOS runners without private signing keys. They use the verified installer, inject a real quarantine attribute, and exercise launch and the production Swift installation path. A failed check prevents the release from becoming public. An uploaded draft is a staging area, not a published update. Do not edit or replace assets in an already published version.
+
+The scripts must reject an unknown leaf, ad-hoc code, changed sealed resources, corrupt DMGs and mismatched bundle IDs or versions. They must not accept a file merely because its name, environment variables or an unsigned checksum look correct.
+
+## One-time migration
+
+1. Quit SpeechCast and any older VoiceCast or Tinycast instance. Keep your settings and user data in place. Do not uninstall the old app or clear its preferences.
+2. Run the installation command above once. Old updaters that trust the previous certificate cannot securely accept the new certificate by themselves. The script verifies the new signing identity independently and migrates an existing `Tinycast.app` or `VoiceCast.app` to `SpeechCast.app`.
+3. Launch the installed app from its permanent Applications directory. Preferences remain under the existing paths, including `~/.config/tinycast`, `~/Library/Preferences/com.tinycast.app.plist` and bundle-based application support paths. The installer changes app bundles only.
+4. Test the actual functions that need Accessibility, Input Monitoring and Automation: invoke the launcher shortcut, paste or run a voice action, and run an automation action. A checked switch alone is not proof of access.
+5. If macOS requests a permission again, grant it in System Settings. If an old entry remains stale, quit the app, remove only that SpeechCast/Tinycast/VoiceCast entry for the affected service, reopen the installed SpeechCast and grant it again. Do not reset all TCC permissions. Do not edit the TCC database.
+6. Check launch at login after the product path changes. If macOS marks the existing login item stale, toggle SpeechCast's launch-at-login setting off and on. Other login items are unaffected.
+7. Use Check for Updates for later versions. The new updater trusts the fixed release certificate, including a transition from an installed beta to its stable version.
+
+Stable identity and bundle ID maximize permission continuity for later releases. macOS does not guarantee that every existing grant survives either the first certificate migration or a future OS policy change. Neither the installer nor the updater silently resets or grants permissions.
+
+## Recovery and manual checks
+
+If installation fails during replacement, the transaction restores the old application before reporting the error. Retain any reported backup until the installed version has launched successfully. A crash after a completed installation is different from a failed file transaction: do not claim that the updater can prove future runtime health. Reinstall a known-good release using a trusted installer if runtime recovery is needed.
+
+On a Mac with no previous install, run the public install command, launch SpeechCast through LaunchServices and confirm that the process remains alive. Verify the executable's signature with `Scripts/verify-release.sh app`. Then update from version N to N+1 in the native update window and verify settings, notes, snippets, permissions and launch at login. Repeat on physical hardware when macOS changes TCC or Gatekeeper behavior.

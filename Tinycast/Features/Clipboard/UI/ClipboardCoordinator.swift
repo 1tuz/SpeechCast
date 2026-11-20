@@ -9,11 +9,11 @@ final class ClipboardCoordinator {
     private let palette: PaletteState
     private let windowController: PaletteWindowController
     private let paletteCoordinator: PaletteCoordinator
-    /// Dialogs, for the one action here that can't be undone.
     private unowned let core: AppCore
     /// One Copy Text at a time: a newer trigger cancels the helper an older one is waiting on.
     private var textTask: Task<Void, Never>?
     private var pasteSequence: PasteSequence?
+    private var isHistoryPastePending = false
 
     init(
         clipboardStore: ClipboardStore,
@@ -81,56 +81,115 @@ final class ClipboardCoordinator {
 
     func perform(_ action: ClipboardDefaultAction, on item: ClipboardItem) {
         switch action {
-        case .paste: paste(item)
+        case .paste: paste(item, plainText: false, keepingWindowOpen: false)
         case .copy: copyToClipboard(item)
-        case .pastePlainText: pasteAsPlainText(item)
-        }
-    }
-
-    func paste(_ item: ClipboardItem) {
-        let previous = windowController.previousApp
-        paletteCoordinator.hidePalette(restoreFocus: false)
-        // A paste promotes the item, so follow it and keep the moved row highlighted.
-        if Paster.paste(item, store: clipboardStore, previousApp: previous) {
-            selectClip(item)
-        } else {
-            reportUnavailable(item)
-        }
-    }
-
-    /// A file's path stays valid text after the file goes, so this never reports it missing.
-    func pasteAsPlainText(_ item: ClipboardItem) {
-        let previous = windowController.previousApp
-        paletteCoordinator.hidePalette(restoreFocus: false)
-        if Paster.pastePlainText(item, store: clipboardStore, previousApp: previous) {
-            selectClip(item)
+        case .pastePlainText: paste(item, plainText: true, keepingWindowOpen: false)
         }
     }
 
     func pasteKeepingWindowOpen(_ item: ClipboardItem) {
-        if !windowController.pasteKeepingWindowOpen(item, store: clipboardStore) {
-            reportUnavailable(item)
+        paste(item, plainText: false, keepingWindowOpen: true)
+    }
+
+    private func paste(_ item: ClipboardItem, plainText: Bool, keepingWindowOpen: Bool) {
+        guard !isHistoryPastePending, !core.isShowingDialog else { return }
+        do throws(Paster.HistoryPasteFailure) {
+            let (target, changeCount) = try Paster.prepareHistoryPaste(
+                item, store: clipboardStore, into: windowController.previousApp, plainText: plainText)
+            if !keepingWindowOpen { paletteCoordinator.hidePalette(restoreFocus: false) }
+            scheduleHistoryPaste(into: target, changeCount: changeCount, keepingWindowOpen: keepingWindowOpen) {
+                guard !keepingWindowOpen else { return }
+                self.clipboardStore.promote(item)
+                self.selectClip(item)
+            }
+        } catch {
+            reportHistoryPasteFailure(error, item: item)
         }
     }
 
-    /// Each press pastes the next older entry into the app in front, never promoting it.
+    /// Each press sends the next older entry to the app in front, without promoting it.
     func pasteNextInSequence() {
         let now = Date()
         // Dropped rather than queued, so a held shortcut cannot paste a burst of entries.
-        if let pasteSequence, pasteSequence.isSettling(at: now) { return }
-        guard let target = paletteCoordinator.targetApp else { return }
-        // A copy made just before the press must reach history, or the walk starts one entry late.
-        clipboardManager.prepareForTinycastPasteboardMutation()
-        var sequence = continuingPasteSequence(at: now)
-        while let item = sequence.next(in: clipboardStore.items) {
-            if paletteCoordinator.isVisible { paletteCoordinator.hidePalette() }
-            // An image or file gone from disk writes nothing, so the press moves on to the next.
-            guard Paster.pasteInPlace(item, store: clipboardStore, into: target) else { continue }
-            sequence.recordPaste(changeCount: NSPasteboard.general.changeCount, at: now)
-            pasteSequence = sequence
-            return
+        guard !isHistoryPastePending, !core.isShowingDialog,
+            pasteSequence?.isSettling(at: now) != true
+        else { return }
+        do throws(Paster.HistoryPasteFailure) {
+            let target = try Paster.checkHistoryPasteTarget(paletteCoordinator.targetApp)
+            // Capture a fresh copy before choosing the next entry or replacing the pasteboard.
+            clipboardManager.prepareForTinycastPasteboardMutation()
+            var sequence = continuingPasteSequence(at: now)
+            while let item = sequence.next(in: clipboardStore.items) {
+                do throws(Paster.HistoryPasteFailure) {
+                    let (_, changeCount) = try Paster.prepareHistoryPaste(
+                        item, store: clipboardStore, into: target, plainText: false)
+                    if paletteCoordinator.isVisible { paletteCoordinator.hidePalette(restoreFocus: false) }
+                    scheduleHistoryPaste(into: target, changeCount: changeCount, keepingWindowOpen: false) {
+                        sequence.recordPaste(changeCount: changeCount, at: Date())
+                        self.pasteSequence = sequence
+                    }
+                    return
+                } catch .unavailable {
+                    // A vanished file or image writes nothing. Try the next entry on this press.
+                    continue
+                }
+            }
+            core.showMessage(String(localized: "Nothing left to paste"), tone: .neutral)
+        } catch {
+            reportHistoryPasteFailure(error)
         }
-        core.showMessage(String(localized: "Nothing left to paste"), tone: .neutral)
+    }
+
+    private func scheduleHistoryPaste(
+        into target: NSRunningApplication, changeCount: Int, keepingWindowOpen: Bool,
+        onPost: @escaping @MainActor () -> Void
+    ) {
+        isHistoryPastePending = true
+        let focusToken = palette.focusToken
+        // Let the palette release key focus before sending ⌘V for a closing paste.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            defer { self.isHistoryPastePending = false }
+            do throws(Paster.HistoryPasteFailure) {
+                guard self.paletteCoordinator.isVisible == keepingWindowOpen,
+                    self.palette.focusToken == focusToken, !self.core.isShowingDialog
+                else { throw .focusChanged }
+                try Paster.postHistoryPaste(into: target, changeCount: changeCount)
+                onPost()
+            } catch {
+                self.reportHistoryPasteFailure(error)
+            }
+        }
+    }
+
+    private func reportHistoryPasteFailure(
+        _ failure: Paster.HistoryPasteFailure, item: ClipboardItem? = nil
+    ) {
+        switch failure {
+        case .needsAccessibility:
+            Task {
+                let openSettings = await core.reportFailure(
+                    title: String(localized: "Tinycast Needs Accessibility Access"),
+                    message: String(localized: """
+                        Allow Tinycast to paste into other apps. If it’s already listed, remove it and add it again. You can still copy from Clipboard History.
+                        """),
+                    symbol: PaletteMode.clipboard.systemImage, recovery: String(localized: "Open Settings"))
+                if openSettings { Permissions.openAccessibilitySettings() }
+            }
+        case .noTarget:
+            core.showMessage(String(localized: "Open an app to paste into first."), tone: .neutral)
+        case .focusChanged:
+            core.showMessage(String(localized: "Focus changed, nothing pasted."), tone: .neutral)
+        case .clipboardChanged:
+            core.showMessage(String(localized: "Clipboard changed, nothing pasted."), tone: .neutral)
+        case .unavailable:
+            if let item, item.kind == .file {
+                reportUnavailable(item)
+            } else {
+                core.showMessage(String(localized: "That clipboard entry is no longer available."), tone: .danger)
+            }
+        case .eventCreationFailed:
+            core.showMessage(String(localized: "Couldn’t send the paste shortcut. Try pressing ⌘V."), tone: .danger)
+        }
     }
 
     /// A copy since the last press, or a long pause, starts the walk over from the newest entry.

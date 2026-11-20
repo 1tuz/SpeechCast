@@ -4,6 +4,370 @@
     "" : {
 
     },
+    "No newer release is available" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine neuere Version verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay una versión más reciente"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune version plus récente n’est disponible"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいリリースはありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "더 최신 버전이 없습니다"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não há uma versão mais recente"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Более свежего релиза нет"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无更新版本"
+          }
+        }
+      }
+    },
+    "Allow Tinycast to paste into other apps. If it’s already listed, remove it and add it again. You can still copy from Clipboard History." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube Tinycast, Inhalte in andere Apps einzufügen. Wenn Tinycast bereits in der Liste steht, entferne es und füge es erneut hinzu. Kopieren aus dem Zwischenablageverlauf bleibt möglich."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permite que Tinycast pegue contenido en otras apps. Si ya aparece en la lista, elimínalo y vuelve a añadirlo. Puedes seguir copiando desde el historial del portapapeles."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorisez Tinycast à coller du contenu dans d’autres apps. S’il figure déjà dans la liste, retirez-le, puis ajoutez-le à nouveau. Vous pouvez toujours copier depuis l’historique du presse-papiers."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tinycastがほかのアプリにペーストできるように許可してください。すでに一覧にある場合は、削除してから追加し直してください。クリップボード履歴からのコピーは引き続きできます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tinycast가 다른 앱에 붙여넣을 수 있도록 허용하세요. 이미 목록에 있다면 제거한 후 다시 추가하세요. 클립보드 기록에서 복사할 수 있습니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permita que o Tinycast cole conteúdo em outros apps. Se já estiver na lista, remova-o e adicione-o novamente. Você ainda pode copiar do histórico da área de transferência."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешите Tinycast вставлять содержимое в другие приложения. Если он уже в списке, удалите его и добавьте снова. Копировать из истории буфера обмена по-прежнему можно."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请允许 Tinycast 在其他 App 中粘贴内容。如果已在列表中，请将其移除后重新添加。你仍可从剪贴板历史记录中复制内容。"
+          }
+        }
+      }
+    },
+    "Open an app to paste into first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne zuerst die Ziel-App."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre primero la app de destino."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrez d’abord l’app de destination."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先にペースト先のアプリを開いてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "먼저 붙여넣을 앱을 여세요."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abra primeiro o app de destino."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сначала откройте приложение, в которое хотите вставить содержимое."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先打开要粘贴到的 App。"
+          }
+        }
+      }
+    },
+    "Focus changed, nothing pasted." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Fokus hat sich geändert. Es wurde nichts eingefügt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambió el foco. No se pegó nada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le focus a changé. Rien n’a été collé."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォーカスが移動したため、ペーストしませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "포커스가 바뀌어 붙여넣지 않았습니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O foco mudou. Nada foi colado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Фокус изменился. Вставка отменена."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "焦点已改变，未粘贴任何内容。"
+          }
+        }
+      }
+    },
+    "Clipboard changed, nothing pasted." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zwischenablage hat sich geändert. Es wurde nichts eingefügt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambió el contenido del portapapeles. No se pegó nada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le contenu du presse-papiers a changé. Rien n’a été collé."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クリップボードの内容が変わったため、ペーストしませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "클립보드 내용이 바뀌어 붙여넣지 않았습니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O conteúdo da área de transferência mudou. Nada foi colado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Содержимое буфера обмена изменилось. Вставка отменена."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "剪贴板内容已改变，未粘贴任何内容。"
+          }
+        }
+      }
+    },
+    "That clipboard entry is no longer available." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Eintrag im Zwischenablageverlauf ist nicht mehr verfügbar."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta entrada del portapapeles ya no está disponible."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette entrée du presse-papiers n’est plus disponible."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このクリップボード項目は利用できなくなりました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 클립보드 항목은 더 이상 사용할 수 없습니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este item da área de transferência não está mais disponível."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эта запись истории буфера обмена больше недоступна."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此剪贴板条目已不可用。"
+          }
+        }
+      }
+    },
+    "Couldn’t send the paste shortcut. Try pressing ⌘V." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Tastenkürzel zum Einfügen konnte nicht gesendet werden. Drücke ⌘V."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo enviar el atajo para pegar. Prueba a pulsar ⌘V."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d’envoyer le raccourci de collage. Essayez d’appuyer sur ⌘V."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ペーストのショートカットを送信できませんでした。⌘Vキーを押してみてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "붙여넣기 단축키를 보낼 수 없습니다. ⌘V를 눌러 보세요."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível enviar o atalho de colar. Tente pressionar ⌘V."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось отправить сочетание клавиш для вставки. Попробуйте нажать ⌘V."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法发送粘贴快捷键。请尝试按下 ⌘V。"
+          }
+        }
+      }
+    },
     "%@ %@ is available" : {
       "localizations" : {
         "de" : {
@@ -25669,6 +26033,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自动"
+          }
+        }
+      }
+    },
+    "Automatic follows StableBar's configured AeroSpace or yabai workspace source. Tiled windows are changed through that manager; custom pixel layouts and Rooms are limited to native mode. Floating windows keep SpeechCast sizing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch folgt der in StableBar konfigurierten AeroSpace- oder yabai-Workspace-Quelle. Gekachelte Fenster werden über diesen Manager geändert; eigene Pixel-Layouts und Räume sind auf den nativen Modus beschränkt. Schwebende Fenster behalten die SpeechCast-Größen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automático sigue la fuente de espacios de AeroSpace o yabai configurada en StableBar. Las ventanas en mosaico se cambian a través de ese gestor; los diseños de píxeles personalizados y las Rooms se limitan al modo nativo. Las ventanas flotantes conservan el tamaño de SpeechCast."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatique suit la source d'espaces AeroSpace ou yabai configurée dans StableBar. Les fenêtres en mosaïque sont modifiées via ce gestionnaire ; les dispositions en pixels personnalisées et les Rooms sont limitées au mode natif. Les fenêtres flottantes conservent le dimensionnement de SpeechCast."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「自動」はStableBarで設定されたAeroSpaceまたはyabaiのワークスペースソースに従います。タイル状のウインドウはそのマネージャ経由で変更され、カスタムピクセルレイアウトとルームはネイティブモード限定です。フローティングウインドウはSpeechCastのサイズ指定を維持します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "자동은 StableBar에 구성된 AeroSpace 또는 yabai 워크스페이스 소스를 따릅니다. 타일 윈도우는 해당 매니저를 통해 변경되며, 사용자 지정 픽셀 레이아웃과 룸은 네이티브 모드로 제한됩니다. 플로팅 윈도우는 SpeechCast 크기 조정을 유지합니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automático segue a fonte de espaços do AeroSpace ou yabai configurada no StableBar. Janelas lado a lado são alteradas por esse gerenciador; layouts de pixels personalizados e Rooms ficam limitados ao modo nativo. Janelas flutuantes mantêm o dimensionamento do SpeechCast."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Автоматически» использует настроенный в StableBar источник рабочих столов AeroSpace или yabai. Мозаичные окна изменяются через этот менеджер; собственные пиксельные раскладки и комнаты ограничены нативным режимом. Плавающие окна сохраняют размеры SpeechCast."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“自动”会遵循 StableBar 中配置的 AeroSpace 或 yabai 工作区来源。平铺窗口通过该管理器更改；自定义像素布局和 Rooms 仅限原生模式。浮动窗口保留 SpeechCast 的尺寸调整。"
           }
         }
       }
@@ -134809,6 +135225,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "窗口命令"
+          }
+        }
+      }
+    },
+    "Window manager" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenstermanager"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestor de ventanas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestionnaire de fenêtres"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ウインドウマネージャ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "윈도우 매니저"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gerenciador de janelas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Диспетчер окон"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "窗口管理器"
           }
         }
       }

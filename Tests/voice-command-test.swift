@@ -4,6 +4,7 @@ import Foundation
 struct VoiceCommandTest {
     static func main() {
         typealias P = SpeechVoiceCommandParser
+        P.aiTriggers = [AIVoiceTriggerStore.builtin.trigger]
         let apps: [P.Target] = [
             .init(kind: .application, id: "onepassword", name: "1Password"),
             .init(kind: .application, id: "telegram", name: "Telegram", aliases: ["Телеграм", "Телега"]),
@@ -60,6 +61,26 @@ struct VoiceCommandTest {
         expect("Отправь окно на рабочий стол 99", .unknown("Номер рабочего стола должен быть от 1 до 20"))
         expect("Поставь окно справа", .action(.window("right-half")))
         expect("Перемести окно вправо", .action(.window("move-right")))
+        for (direction, command) in [("вправо", "move-right"), ("влево", "move-left"),
+                                     ("вверх", "move-up"), ("вниз", "move-down")] {
+            for verb in ["сдвинь", "перемести", "подвинь", "передвинь", "двинь",
+                         "сдвинуть", "переместить", "подвинуть", "передвинуть", "двинуть"] {
+                expect("\(verb) окно \(direction)", .action(.window(command)))
+            }
+        }
+        expect("  ПОДВИНЬ,  ОКНО — ВПРАВО, пожалуйста! ", .action(.window("move-right")))
+        expect("Пожалуйста, передвинь окно влево.", .action(.window("move-left")))
+        expect("Перемести окно на правую половину", .action(.window("right-half")))
+        expect("Окно вниз", .action(.window("bottom-half")))
+        expect("Подвинь окно, пожалуйста!",
+               .invalidWindowCommand("Укажи направление: влево, вправо, вверх или вниз"))
+        expect("Как подвинуть окно вправо?", .notCommand)
+        expect("Подвинь кресло", .notCommand)
+        expect("Подвинь окно к соседнему столу", .notCommand)
+        expect("Посмотри подвинь окно", .action(.aiPrompt(trigger: "посмотри", prompt: "подвинь окно")))
+        P.aiTriggers = ["подвинь"]
+        expect("Подвинь окно", .action(.aiPrompt(trigger: "подвинь", prompt: "окно")))
+        P.aiTriggers = [AIVoiceTriggerStore.builtin.trigger]
         expect("Отправь окно на следующий монитор", .action(.window("next-display")))
         expect("Громкость 25 процентов", .action(.volume(25)))
         expect("Сверни окно", .action(.window("minimize")))

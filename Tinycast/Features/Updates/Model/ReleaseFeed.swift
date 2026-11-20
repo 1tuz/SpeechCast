@@ -12,7 +12,7 @@ struct AvailableRelease: Codable, Hashable, Sendable {
 /// Nothing throws: an unusable body means nothing to install, and the pump retries.
 enum ReleaseFeed {
     /// Where releases come from, and what every `@handle` and `#304` in their notes points at.
-    static let repository = "1tuz/tinycast"
+    static let repository = "1tuz/SpeechCast"
 
     /// The newest release this channel accepts, ignoring drafts and anything without a usable DMG.
     static func newest(
@@ -59,6 +59,21 @@ enum ReleaseFeed {
     ) -> Entry.Asset? {
         guard case .appleSilicon = architecture else { return nil }
         return assets.first { $0.name.hasSuffix(".dmg") }
+    }
+
+    /// The download targets the release host only. `browser_download_url` is a direct
+    /// `github.com/<repository>/releases/download/...` link; the session may follow GitHub's own
+    /// redirect to the CDN, but the feed is the one place a foreign URL could enter, so it is
+    /// filtered here, before anything is downloaded.
+    static func acceptsAssetURL(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        guard url.scheme == "https" else { return false }
+        if host == "github.com" {
+            // The direct download path; the API never emits any other github.com form here.
+            return url.path.hasPrefix("/\(repository)/releases/download/")
+        }
+        // GitHub's release CDN: a redirect lands here, and a feed entry carries it directly.
+        return host == "objects.githubusercontent.com" || host == "release-assets.githubusercontent.com"
     }
 
     private struct Entry: Decodable {
