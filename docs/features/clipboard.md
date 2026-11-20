@@ -414,6 +414,10 @@ Paste and Keep Window Open (⌥↵) does not promote any entry. The rows hold st
 selection, so ↓ then ⌥↵ pastes a run of entries in order. Paste and Paste as Plain Text promote
 after posting the shortcut, and Copy promotes after writing the pasteboard.
 
+Closing paste hands focus back to the target before the delayed shortcut, but only if that app is
+still frontmost. Keep Window Open does not hand back focus. After promotion, the selection follows
+the entry only if the palette is still in Clipboard History, not if it has reset to the launcher.
+
 History paste needs Accessibility access. If macOS denies access, Tinycast leaves the palette and
 pasteboard alone and offers to open Accessibility settings. After a reinstall, remove the old
 Tinycast entry and add the installed app again if Settings already lists it. Copy does not need
@@ -527,8 +531,10 @@ session begins.
 
 A command, so it is bound in Settings ▸ Clipboard like any other. Each press pastes the next older
 entry — text, image or file — to `PaletteCoordinator.targetApp`. Tinycast sends ⌘V to that app's
-PID only if it is still frontmost. It does not activate the app or promote the entry. If an image
-or file is gone from disk, the same press moves on to the next entry without writing it.
+PID only if it is still frontmost. If the palette is open, Tinycast closes it and hands focus back
+under the same guard as a closing history paste. Otherwise, it does not activate the app. It never
+promotes the entry. If an image or file is gone from disk, the same press moves on to the next entry
+without writing it.
 
 **A press drains the poller before it writes**, through `prepareForTinycastPasteboardMutation`. A
 copy made inside the 0.5s poll interval would otherwise be overwritten unrecorded, and the walk

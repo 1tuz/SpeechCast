@@ -25,6 +25,7 @@ struct PasteboardTests {
         aVanishedFileWritesNothing()
         imageEntriesWriteBackWithTheirFile()
         deniedHistoryPasteLeavesTheBoardAndOrderAlone()
+        historyPastePostingRechecksAccessibilityWithoutRequestingIt()
         copyNeedsNoAccessibilityAccess()
 
         print("\(passes)/\(passes + failures) passed")
@@ -367,24 +368,42 @@ struct PasteboardTests {
             store.addText("newest", sourceBundleID: nil)
             let item = store.items[1]
             let pb = board()
+            defer { pb.releaseGlobally() }
             pb.declareTypes([.string], owner: nil)
             pb.setString("already copied", forType: .string)
             let originalCount = pb.changeCount
             let originalOrder = store.items.map(\.id)
+            // A nonnil candidate without an external app; later target checks would reject it.
+            let candidate = NSRunningApplication.current
+            let requestsBeforePaste = Permissions.accessibilityRequests
 
             for plainText in [false, true] {
                 do throws(Paster.HistoryPasteFailure) {
                     _ = try Paster.prepareHistoryPaste(
-                        item, store: store, into: nil, plainText: plainText, on: pb)
+                        item, store: store, into: candidate, plainText: plainText, on: pb)
                     fail("history paste reports denial before preparing its payload")
                 } catch {
                     expect(error == .needsAccessibility, "history paste reports Accessibility denial")
                 }
             }
+            expect(
+                Permissions.accessibilityRequests == requestsBeforePaste + 2,
+                "both user-initiated paste variants request Accessibility through the existing helper")
             expect(pb.changeCount == originalCount, "denied paste leaves the board untouched")
             expect(pb.string(forType: .string) == "already copied", "denied paste keeps the prior copy")
             expect(store.items.map(\.id) == originalOrder, "denied paste does not promote the entry")
         }
+    }
+
+    static func historyPastePostingRechecksAccessibilityWithoutRequestingIt() {
+        let requestsBeforePost = Permissions.accessibilityRequests
+        do throws(Paster.HistoryPasteFailure) {
+            try Paster.postHistoryPaste(into: .current, changeCount: 0)
+            fail("posting should stop when Accessibility is no longer trusted")
+        } catch {
+            expect(error == .needsAccessibility, "posting rechecks Accessibility trust")
+        }
+        expect(Permissions.accessibilityRequests == requestsBeforePost, "posting does not request Accessibility")
     }
 
     static func copyNeedsNoAccessibilityAccess() {
@@ -434,8 +453,14 @@ final class AppSettings {
 }
 
 enum Permissions {
+    @MainActor private(set) static var accessibilityRequests = 0
+
     static func isAccessibilityTrusted() -> Bool { false }
-    static func ensureAccessibility() -> Bool { false }
+    @MainActor
+    static func ensureAccessibility() -> Bool {
+        accessibilityRequests += 1
+        return false
+    }
 }
 
 final class NotificationToken {

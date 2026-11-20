@@ -96,11 +96,11 @@ final class ClipboardCoordinator {
         do throws(Paster.HistoryPasteFailure) {
             let (target, changeCount) = try Paster.prepareHistoryPaste(
                 item, store: clipboardStore, into: windowController.previousApp, plainText: plainText)
-            if !keepingWindowOpen { paletteCoordinator.hidePalette(restoreFocus: false) }
+            if !keepingWindowOpen { try closePaletteForHistoryPaste(into: target) }
             scheduleHistoryPaste(into: target, changeCount: changeCount, keepingWindowOpen: keepingWindowOpen) {
                 guard !keepingWindowOpen else { return }
                 self.clipboardStore.promote(item)
-                self.selectClip(item)
+                if self.palette.mode == .clipboard { self.selectClip(item) }
             }
         } catch {
             reportHistoryPasteFailure(error, item: item)
@@ -123,7 +123,7 @@ final class ClipboardCoordinator {
                 do throws(Paster.HistoryPasteFailure) {
                     let (_, changeCount) = try Paster.prepareHistoryPaste(
                         item, store: clipboardStore, into: target, plainText: false)
-                    if paletteCoordinator.isVisible { paletteCoordinator.hidePalette(restoreFocus: false) }
+                    if paletteCoordinator.isVisible { try closePaletteForHistoryPaste(into: target) }
                     scheduleHistoryPaste(into: target, changeCount: changeCount, keepingWindowOpen: false) {
                         sequence.recordPaste(changeCount: changeCount, at: Date())
                         self.pasteSequence = sequence
@@ -140,13 +140,23 @@ final class ClipboardCoordinator {
         }
     }
 
+    private func closePaletteForHistoryPaste(into target: NSRunningApplication)
+        throws(Paster.HistoryPasteFailure)
+    {
+        paletteCoordinator.hidePalette(restoreFocus: false)
+        // The non-activating panel can hold key while the target is still frontmost.
+        // Hand key focus back now, never from the delayed post after the user can switch apps.
+        _ = try Paster.checkHistoryPasteTarget(target)
+        target.activate()
+    }
+
     private func scheduleHistoryPaste(
         into target: NSRunningApplication, changeCount: Int, keepingWindowOpen: Bool,
         onPost: @escaping @MainActor () -> Void
     ) {
         isHistoryPastePending = true
         let focusToken = palette.focusToken
-        // Let the palette release key focus before sending ⌘V for a closing paste.
+        // Give the focus handoff and pasteboard write time to settle before sending ⌘V.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             defer { self.isHistoryPastePending = false }
             do throws(Paster.HistoryPasteFailure) {

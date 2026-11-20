@@ -19,9 +19,14 @@ enum Paster {
     static func checkHistoryPasteTarget(_ app: NSRunningApplication?) throws(HistoryPasteFailure)
         -> NSRunningApplication
     {
-        guard Permissions.isAccessibilityTrusted(), CGPreflightPostEventAccess() else {
-            throw .needsAccessibility
-        }
+        guard Permissions.ensureAccessibility() else { throw .needsAccessibility }
+        return try validateHistoryPasteTarget(app)
+    }
+
+    @MainActor
+    private static func validateHistoryPasteTarget(_ app: NSRunningApplication?) throws(HistoryPasteFailure)
+        -> NSRunningApplication
+    {
         guard let app, !app.isTerminated,
             app.processIdentifier != NSRunningApplication.current.processIdentifier
         else { throw .noTarget }
@@ -51,7 +56,8 @@ enum Paster {
     static func postHistoryPaste(into app: NSRunningApplication, changeCount: Int)
         throws(HistoryPasteFailure)
     {
-        _ = try checkHistoryPasteTarget(app)
+        guard Permissions.isAccessibilityTrusted() else { throw .needsAccessibility }
+        _ = try validateHistoryPasteTarget(app)
         guard NSPasteboard.general.changeCount == changeCount else { throw .clipboardChanged }
         guard sendCommand(key: CGKeyCode(kVK_ANSI_V), toPid: app.processIdentifier) else {
             throw .eventCreationFailed
