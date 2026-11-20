@@ -69,7 +69,10 @@ enum SettingsBackupCoverage {
         "menuBarLinkedEventsOnly": .menuBarLinkedEventsOnly,
         "calendarMenuBarHidesWhenEmpty": .calendarMenuBarHidesWhenEmpty,
         "hideCurrentEvent": .hideCurrentEvent,
-        "supportReminders": .supportReminders
+        "supportReminders": .supportReminders,
+        "dictationCleanupEnabled": .dictationCleanupEnabled,
+        "dictationShortcutMode": .dictationShortcutMode,
+        "voiceShortcutMode": .voiceShortcutMode
     ]
 
     /// The `SettingsData` fields no `AppSettings` key stands behind, and what they read instead.
@@ -184,6 +187,14 @@ enum SettingsBackupCoverage {
         AppSettingsKey.notesFolder.rawValue:
             "Names a folder on this Mac; the one a backup lands on may not have it.",
         AppSettingsKey.settingsFileEnabled.rawValue:
-            "Lets a file on this Mac change its settings; an import must not hand that to another."
+            "Lets a file on this Mac change its settings; an import must not hand that to another.",
+        AppSettingsKey.dictationEnabled.rawValue:
+            "Doubles as consent to listen on the microphone and type into other apps; a flag that "
+            + "grants a capability is never carried by a backup.",
+        AppSettingsKey.dictationAutoLearnEnabled.rawValue:
+            "Arms an Accessibility monitor over what the person types after a dictation; a flag that "
+            + "grants a capability is never carried by a backup.",
+        AppSettingsKey.dictationModel.rawValue:
+            "Names a Speech Runtime model installed on this Mac; another Mac may not have it."
     ]
 }

@@ -221,6 +221,12 @@ final class AppCore {
         chats: aiChats, settings: settings, palette: palette,
         paletteCoordinator: paletteCoordinator, core: self)
     @ObservationIgnored private(set) lazy var speechVoice = SpeechRuntimeVoiceAsk(core: self)
+    /// Dictation shares the microphone, the pill and the Speech Runtime client with Voice Ask.
+    @ObservationIgnored private(set) lazy var dictation = DictationCoordinator(core: self)
+    /// One microphone, one transcriber and one pill: neither voice action may open a second one.
+    @ObservationIgnored private(set) lazy var speechVoiceCapture = SpeechVoiceCapture()
+    /// The only place that probes or starts the installed Speech Runtime.
+    @ObservationIgnored private(set) lazy var speechRuntime = SpeechRuntimeService()
     /// Focus runs without Speech Runtime, but shares the existing voice command router.
     @ObservationIgnored private(set) lazy var focus = FocusSessionCoordinator(core: self)
     /// Its own window and lifecycle; the catalog and disambiguation UI share one surface.
@@ -354,6 +360,8 @@ final class AppCore {
             hotKeys.onTogglePalette = { [weak self] in self?.paletteCoordinator.togglePalette() }
             hotKeys.onVoiceAskKeyDown = { [weak self] in self?.speechVoice.hotKeyDown() }
             hotKeys.onVoiceAskKeyUp = { [weak self] in self?.speechVoice.hotKeyUp() }
+            hotKeys.onDictationKeyDown = { [weak self] in self?.dictation.hotKeyDown() }
+            hotKeys.onDictationKeyUp = { [weak self] in self?.dictation.hotKeyUp() }
             hotKeys.onRunCommand = { [weak self] id in self?.launcherCoordinator.runCommand(id) }
             hotKeys.onRunCustomCommand = { [weak self] id in
                 self?.customCommandCoordinator.runCustomCommand(id: id)
@@ -520,7 +528,7 @@ final class AppCore {
             return snippetsStore.record(id: id)?.snippet.name
         case .extensionCommand(let entryID):
             return appIndex.apps.first { $0.kind == .extensionCommand && $0.id == entryID }?.name
-        case .togglePalette, .voiceAsk, .command, .systemAction, .windowCommand:
+        case .togglePalette, .voiceAsk, .dictation, .command, .systemAction, .windowCommand:
             return nil
         }
     }

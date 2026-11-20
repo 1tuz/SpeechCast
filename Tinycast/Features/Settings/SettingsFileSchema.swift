@@ -146,6 +146,10 @@ enum SettingsFileSchema {
         case .hideCurrentEvent: return bind(settings, \.hideCurrentEvent)
         case .calendarCommands: return launcher.commandsBinding(for: key, owner: .calendar)
         case .extensionsShowInLauncher: return bind(settings, \.extensionsShowInLauncher)
+        case .voiceDictationModel: return bind(settings, \.dictationModel)
+        case .voiceTextCleanup: return bind(settings, \.dictationCleanupEnabled)
+        case .voiceDictationShortcutMode: return bind(settings, \.dictationShortcutMode)
+        case .voiceCommandsShortcutMode: return bind(settings, \.voiceShortcutMode)
         }
     }
 
@@ -172,6 +176,7 @@ extension SnippetDefaultAction: SettingsFileRawValue {}
 extension EmojiSkinTone: SettingsFileRawValue {}
 extension EmojiGridColumns: SettingsFileRawValue {}
 extension JoinWindow: SettingsFileRawValue {}
+extension VoiceShortcutMode: SettingsFileRawValue {}
 
 extension ClipboardRetention: SettingsFileToken {
     var settingsToken: SettingsFileJSON {

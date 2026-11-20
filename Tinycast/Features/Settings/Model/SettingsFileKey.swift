@@ -108,6 +108,11 @@ enum SettingsFileKey: String, CaseIterable, Sendable {
     case calendarMenuBarHidesWhenEmpty = "calendar.menuBarHidesWhenEmpty"
     case hideCurrentEvent = "calendar.hideCurrentEventAfterMinutes"
     case calendarCommands = "calendar.commands"
+    // Capability flags stay out of the file: `dictation.enabled` and the dictionary must not travel.
+    case voiceDictationModel = "voice.dictationModel"
+    case voiceTextCleanup = "voice.textCleanup"
+    case voiceDictationShortcutMode = "voice.dictationShortcutMode"
+    case voiceCommandsShortcutMode = "voice.commandsShortcutMode"
     case extensionsShowInLauncher = "extensions.showInLauncher"
 
     var section: String { String(rawValue.prefix { $0 != "." }) }

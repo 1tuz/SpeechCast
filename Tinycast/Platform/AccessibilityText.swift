@@ -80,4 +80,78 @@ enum AccessibilityText {
         else { return nil }
         return value as? String
     }
+
+    // MARK: - Bounded reads
+
+    /// Auto Learn's whole vocabulary: identity, a caret, a length, and a short window at a range.
+    /// Nothing here walks the field, so a million-character document costs the same as an empty one.
+    static func role(of element: AXUIElement) -> String? {
+        stringAttribute(kAXRoleAttribute, of: element)
+    }
+
+    static func isSecure(_ element: AXUIElement) -> Bool {
+        stringAttribute(kAXSubroleAttribute, of: element) == "AXSecureTextField"
+            || stringAttribute(kAXRoleAttribute, of: element) == "AXSecureTextField"
+    }
+
+    static func numberOfCharacters(of element: AXUIElement) -> Int? {
+        var value: CFTypeRef?
+        guard
+            AXUIElementCopyAttributeValue(
+                element, kAXNumberOfCharactersAttribute as CFString, &value) == .success,
+            let value,
+            CFGetTypeID(value) == CFNumberGetTypeID()
+        else { return nil }
+        return (value as? NSNumber)?.intValue
+    }
+
+    static func selectedRange(of element: AXUIElement) -> NSRange? {
+        var value: CFTypeRef?
+        guard
+            AXUIElementCopyAttributeValue(
+                element, kAXSelectedTextRangeAttribute as CFString, &value) == .success,
+            let value,
+            CFGetTypeID(value) == AXValueGetTypeID()
+        else { return nil }
+        var range = CFRange()
+        guard AXValueGetValue(value as! AXValue, .cfRange, &range) else { return nil }
+        return NSRange(location: range.location, length: range.length)
+    }
+
+    static func string(of element: AXUIElement, range: NSRange) -> String? {
+        var cfRange = CFRange(location: range.location, length: range.length)
+        guard let axRange = AXValueCreate(.cfRange, &cfRange) else { return nil }
+        var value: CFTypeRef?
+        guard
+            AXUIElementCopyParameterizedAttributeValue(
+                element, kAXStringForRangeParameterizedAttribute as CFString, axRange, &value)
+                == .success
+        else { return nil }
+        return value as? String
+    }
+
+    static func focusedElement(processIdentifier: pid_t) -> AXUIElement? {
+        let application = AXUIElementCreateApplication(processIdentifier)
+        AXUIElementSetMessagingTimeout(application, timeout)
+        var focused: CFTypeRef?
+        guard
+            AXUIElementCopyAttributeValue(
+                application, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+            let focused,
+            CFGetTypeID(focused) == AXUIElementGetTypeID()
+        else { return nil }
+        let element = focused as! AXUIElement
+        AXUIElementSetMessagingTimeout(element, timeout)
+        return element
+    }
+
+    private static func stringAttribute(_ attribute: String, of element: AXUIElement) -> String? {
+        var value: CFTypeRef?
+        guard
+            AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+            let value,
+            CFGetTypeID(value) == CFStringGetTypeID()
+        else { return nil }
+        return value as? String
+    }
 }

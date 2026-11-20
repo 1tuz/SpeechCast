@@ -11,6 +11,8 @@ final class SpeechVoiceMicrophone {
 
     /// Injectable so the harness can simulate a Mac with no input device.
     private let inputAvailable: () -> Bool
+    /// Bumped by every stop, so a start suspended in the permission prompt cannot install a tap.
+    private var epoch = 0
 
     init(inputAvailable: @escaping () -> Bool = { AVCaptureDevice.default(for: .audio) != nil }) {
         self.inputAvailable = inputAvailable
@@ -18,6 +20,8 @@ final class SpeechVoiceMicrophone {
 
     func start() async throws {
         stop()
+        epoch &+= 1
+        let mine = epoch
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: break
         case .notDetermined:
@@ -26,6 +30,8 @@ final class SpeechVoiceMicrophone {
             }
         default: throw SpeechVoiceFailure(detail: "Enable microphone access for Tinycast in System Settings")
         }
+        // The owner released while the prompt was up: never leave a tap with nobody listening.
+        guard mine == epoch else { throw CancellationError() }
         // AVAudioEngine's hardware format lies when no input device exists; installTap then raises
         // an ObjC exception that no Swift `catch` can stop.
         guard inputAvailable() else {
@@ -40,7 +46,10 @@ final class SpeechVoiceMicrophone {
             })
     }
 
-    func stop() { engine.stop() }
+    func stop() {
+        epoch &+= 1
+        engine.stop()
+    }
 }
 
 /// An ordinary object rather than a MainActor AVAudioEngine: callbacks run on the audio thread.

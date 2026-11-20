@@ -399,6 +399,7 @@ private struct SettingsEnvironment: ViewModifier {
             .environment(core.customWindowSizeCoordinator)
             .environment(core.calendarStore)
             .environment(core.focus)
+            .environment(core.dictation)
             .environment(core.aiSettings)
             .environment(core.mcpSettings)
             .environment(core.mcpCoordinator)

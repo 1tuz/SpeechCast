@@ -382,6 +382,41 @@ final class AppSettings {
         didSet { defaults.set(aiEnabled, forKey: Key.aiEnabled.rawValue) }
     }
 
+    /// Dictation grants keystroke listening and mic use, so it is never mirrored either.
+    var dictationEnabled: Bool {
+        didSet { defaults.set(dictationEnabled, forKey: Key.dictationEnabled.rawValue) }
+    }
+
+    /// Empty means the Speech Runtime default; `DictationCoordinator` resolves the fallback chain.
+    var dictationModel: String {
+        didSet { defaults.set(dictationModel, forKey: Key.dictationModel.rawValue) }
+    }
+
+    var dictationCleanupEnabled: Bool {
+        didSet {
+            defaults.set(dictationCleanupEnabled, forKey: Key.dictationCleanupEnabled.rawValue)
+        }
+    }
+
+    var dictationAutoLearnEnabled: Bool {
+        didSet {
+            defaults.set(dictationAutoLearnEnabled, forKey: Key.dictationAutoLearnEnabled.rawValue)
+        }
+    }
+
+    var dictationShortcutMode: VoiceShortcutMode {
+        didSet {
+            defaults.set(dictationShortcutMode.rawValue, forKey: Key.dictationShortcutMode.rawValue)
+        }
+    }
+
+    /// Voice commands keep their own mode: talking to the launcher differs from dictating.
+    var voiceShortcutMode: VoiceShortcutMode {
+        didSet {
+            defaults.set(voiceShortcutMode.rawValue, forKey: Key.voiceShortcutMode.rawValue)
+        }
+    }
+
     /// Enables local workflow triggers that run while Tinycast is open.
     var workflowsEnabled: Bool {
         didSet { defaults.set(workflowsEnabled, forKey: Key.workflowsEnabled.rawValue) }
@@ -774,6 +809,19 @@ final class AppSettings {
         notesShowsInMenuBar = defaults.bool(forKey: Key.notesShowsInMenuBar.rawValue)
         notesFolder = defaults.string(forKey: Key.notesFolder.rawValue)
         aiEnabled = defaults.bool(forKey: Key.aiEnabled.rawValue)
+        dictationEnabled = defaults.bool(forKey: Key.dictationEnabled.rawValue)
+        dictationModel = defaults.string(forKey: Key.dictationModel.rawValue) ?? ""
+        // Cleanup defaults on, so absence must be distinguished from a stored `false`.
+        dictationCleanupEnabled =
+            defaults.object(forKey: Key.dictationCleanupEnabled.rawValue) == nil
+            || defaults.bool(forKey: Key.dictationCleanupEnabled.rawValue)
+        dictationAutoLearnEnabled = defaults.bool(forKey: Key.dictationAutoLearnEnabled.rawValue)
+        dictationShortcutMode =
+            defaults.string(forKey: Key.dictationShortcutMode.rawValue)
+            .flatMap(VoiceShortcutMode.init) ?? .smart
+        voiceShortcutMode =
+            defaults.string(forKey: Key.voiceShortcutMode.rawValue)
+            .flatMap(VoiceShortcutMode.init) ?? .smart
         workflowsEnabled = defaults.bool(forKey: Key.workflowsEnabled.rawValue)
         ephemeralSnippetsEnabled = defaults.bool(forKey: Key.ephemeralSnippetsEnabled.rawValue)
         mcpEnabled = defaults.bool(forKey: Key.mcpEnabled.rawValue)

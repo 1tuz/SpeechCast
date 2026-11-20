@@ -7,6 +7,8 @@ final class HotKeyManager {
     var onTogglePalette: (() -> Void)?
     var onVoiceAskKeyDown: (() -> Void)?
     var onVoiceAskKeyUp: (() -> Void)?
+    var onDictationKeyDown: (() -> Void)?
+    var onDictationKeyUp: (() -> Void)?
     /// The launcher's own command funnel, so a shortcut and a palette row run the same thing.
     var onRunCommand: ((CommandID) -> Void)?
     var onRunCustomCommand: ((UUID) -> Void)?
@@ -249,7 +251,8 @@ final class HotKeyManager {
             index(id, bound: binding != nil, key: boundSnippetKey)
         case .extensionCommand(let entryID):
             index(entryID, bound: binding != nil, key: boundExtensionCommandKey)
-        case .workflow, .togglePalette, .voiceAsk, .command, .systemAction, .windowCommand:
+        case .workflow, .togglePalette, .voiceAsk, .dictation, .command, .systemAction,
+            .windowCommand:
             break
         }
         candidateActionsCache = nil
@@ -277,6 +280,20 @@ final class HotKeyManager {
         center.register(id: Self.secureInputHintID, shortcut: shortcut, onKeyDown: { _ in onPress() })
     }
 
+    private func holdKeyDown(_ action: HotKeyAction) {
+        switch action {
+        case .dictation: onDictationKeyDown?()
+        default: onVoiceAskKeyDown?()
+        }
+    }
+
+    private func holdKeyUp(_ action: HotKeyAction) {
+        switch action {
+        case .dictation: onDictationKeyUp?()
+        default: onVoiceAskKeyUp?()
+        }
+    }
+
     /// Rebuilt wholesale, like the modifier-tap map, so an equivalent cannot outlive its binding.
     private func syncSecureInputEquivalents() {
         clearSecureInputEquivalents()
@@ -286,7 +303,7 @@ final class HotKeyManager {
         let originalActions = actions.reduce(into: [KeyShortcut: HotKeyAction]()) { result, action in
             if let shortcut = binding(for: action)?.shortcut { result[shortcut] = action }
         }
-        for action in actions where action != .voiceAsk {
+        for action in actions where !Self.deliversKeyUp(action) {
             guard let equivalent = binding(for: action)?.shortcut?.secureInputEquivalent(of: chord)
             else { continue }
             let original = originalActions[equivalent]
@@ -377,6 +394,8 @@ final class HotKeyManager {
             return String(localized: "App Launcher")
         case .voiceAsk:
             return "Voice Ask (Speech Runtime)"
+        case .dictation:
+            return String(localized: "Dictation")
         case .command(let id):
             return id.name
         case .app(let bundleID), .settingsPane(let bundleID):
@@ -411,14 +430,14 @@ final class HotKeyManager {
     /// Hands a combo to Carbon; a modifier-only binding has no per-action registration.
     private func register(_ action: HotKeyAction) {
         guard let shortcut = binding(for: action)?.shortcut else { return }
-        if action == .voiceAsk {
+        if Self.deliversKeyUp(action) {
             center.register(
                 id: action.defaultsKey, shortcut: shortcut,
                 onKeyDown: { [weak self] _ in
                     guard let self, self.allowsAction?(action) ?? true else { return }
-                    self.onVoiceAskKeyDown?()
+                    self.holdKeyDown(action)
                 },
-                onKeyUp: { [weak self] in self?.onVoiceAskKeyUp?() })
+                onKeyUp: { [weak self] in self?.holdKeyUp(action) })
             return
         }
         center.register(
@@ -426,10 +445,15 @@ final class HotKeyManager {
             onKeyDown: { [weak self] _ in self?.perform(action) })
     }
 
+    /// A tap monitor only sees the press, so an action that needs the release stays out of both maps.
+    private static func deliversKeyUp(_ action: HotKeyAction) -> Bool {
+        action == .voiceAsk || action == .dictation
+    }
+
     /// Rebuilt wholesale, so the map can't drift from what is on disk.
     private func syncModifierTaps() {
         modifierTaps = [:]
-        for action in candidateActions where action != .voiceAsk {
+        for action in candidateActions where !Self.deliversKeyUp(action) {
             guard let binding = binding(for: action), binding.usesModifierTapMonitor else { continue }
             modifierTaps[binding] = action
         }
@@ -442,6 +466,7 @@ final class HotKeyManager {
         switch action {
         case .togglePalette: onTogglePalette?()
         case .voiceAsk: onVoiceAskKeyDown?()
+        case .dictation: onDictationKeyDown?()
         case .command(let id): onRunCommand?(id)
         case .app(let bundleID): AppLauncher.toggle(bundleID: bundleID)
         case .settingsPane(let bundleID): AppLauncher.openSettingsPane(bundleID: bundleID)

@@ -75,6 +75,49 @@ struct SettingsBackupTest {
             "emoji grid density rides the settings backup",
             mirrored["emojiGridColumns"] == .emojiGridColumns)
 
+        // Voice capability flags grant microphone + Accessibility consent; they never travel.
+        check(
+            "dictationEnabled stays out of a backup",
+            excluded[AppSettingsKey.dictationEnabled.rawValue] != nil)
+        check(
+            "dictationEnabled is not backed up under another field",
+            !mirrored.values.contains(.dictationEnabled))
+        check(
+            "dictationAutoLearnEnabled stays out of a backup",
+            excluded[AppSettingsKey.dictationAutoLearnEnabled.rawValue] != nil)
+        check(
+            "dictationAutoLearnEnabled is not backed up under another field",
+            !mirrored.values.contains(.dictationAutoLearnEnabled))
+
+        // Model names are machine-local: the Mac a backup lands on may not have it installed.
+        check(
+            "dictationModel stays out of a backup",
+            excluded[AppSettingsKey.dictationModel.rawValue] != nil)
+        check(
+            "dictationModel is not backed up under another field",
+            !mirrored.values.contains(.dictationModel))
+
+        // The non-capability voice choices carry no grant, so they ride the backup.
+        check(
+            "dictation cleanup rides the settings backup",
+            mirrored["dictationCleanupEnabled"] == .dictationCleanupEnabled)
+        check(
+            "the dictation shortcut mode rides the settings backup",
+            mirrored["dictationShortcutMode"] == .dictationShortcutMode)
+        check(
+            "the voice shortcut mode rides the settings backup",
+            mirrored["voiceShortcutMode"] == .voiceShortcutMode)
+
+        // The dictionary file is personal content; a settings backup must never carry it.
+        let dictionaryMirrors = mirrored.keys.filter { $0.contains("dictionary") }
+        check(
+            naming("no mirrored field carries the dictionary", Array(dictionaryMirrors)),
+            dictionaryMirrors.isEmpty)
+        let dictionaryExclusions = excluded.keys.filter { $0.contains("dictionary") }
+        check(
+            naming("no excluded field carries the dictionary", Array(dictionaryExclusions)),
+            dictionaryExclusions.isEmpty)
+
         // Named one by one: a backup now carries content, so it is far likelier to be sent on.
         for key: AppSettingsKey in [
             .snippetsEnabled, .extensionsEnabled, .calendarEnabled, .autoJoinMeetings,

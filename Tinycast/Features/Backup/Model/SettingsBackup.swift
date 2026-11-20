@@ -97,6 +97,10 @@ struct SettingsBackup: Codable {
         var hideCurrentEvent: Int?
         // Safe to carry: it silences a prompt rather than granting anything.
         var supportReminders: Bool?
+        // Carried, unlike `dictationEnabled`: how inserted text is tidied grants nothing.
+        var dictationCleanupEnabled: Bool?
+        var dictationShortcutMode: String?
+        var voiceShortcutMode: String?
     }
 
     struct HotkeyBackup: Codable {
@@ -204,7 +208,10 @@ extension SettingsBackup {
             menuBarLinkedEventsOnly: s.menuBarLinkedEventsOnly,
             calendarMenuBarHidesWhenEmpty: s.calendarMenuBarHidesWhenEmpty,
             hideCurrentEvent: s.hideCurrentEvent.rawValue,
-            supportReminders: s.supportRemindersEnabled)
+            supportReminders: s.supportRemindersEnabled,
+            dictationCleanupEnabled: s.dictationCleanupEnabled,
+            dictationShortcutMode: s.dictationShortcutMode.rawValue,
+            voiceShortcutMode: s.voiceShortcutMode.rawValue)
 
         let hk = core.hotKeys
         var hotkeys = HotkeyBackup()
@@ -588,6 +595,18 @@ extension SettingsBackup {
         }
         if let flag = s.supportReminders {
             settings.supportRemindersEnabled = flag
+            count += 1
+        }
+        if let flag = s.dictationCleanupEnabled {
+            settings.dictationCleanupEnabled = flag
+            count += 1
+        }
+        if let raw = s.dictationShortcutMode, let mode = VoiceShortcutMode(rawValue: raw) {
+            settings.dictationShortcutMode = mode
+            count += 1
+        }
+        if let raw = s.voiceShortcutMode, let mode = VoiceShortcutMode(rawValue: raw) {
+            settings.voiceShortcutMode = mode
             count += 1
         }
         return count

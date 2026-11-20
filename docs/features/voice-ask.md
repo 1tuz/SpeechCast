@@ -24,8 +24,15 @@ Runtime daemon, and command matching by a pure Foundation parser that never sees
   execute one of them. Different plausible actions from typo correction answer "unknown", not an
   action. Only full names and aliases match — never a substring of an installed app's name.
 - **Audio capture is a client of Speech Runtime, not a model host.** The API is local and fixed; the
-  client never starts or terminates the daemon, and the user controls model downloads in Speech
-  Runtime.app. Recognition and command matching are entirely local — nothing is sent off this Mac.
+  client never runs a second copy of the daemon, but it does start the installed agent through its
+  own registered launch mechanism: a health probe first, then `launchctl kickstart` when the agent
+  is loaded, `bootstrap` when the plist exists unloaded, and opening the app only when nothing else
+  can work — concurrent callers share one launch attempt. Recognition and command matching are
+  entirely local — nothing is sent off this Mac.
+- **SpeechCast never downloads a model and never posts `/v1/models/load`.** First run is explicit:
+  Voice settings' action opens Speech Runtime.app, whose own UI asks before downloading hundreds of
+  MB. The transcriber loads a model only when a stream starts, and a model switch that is not
+  installed surfaces as `needsModel` with no load attempt.
 - **The action verb may carry one ASR error; qualifiers must remain exact.** `fuzzyPrefix` corrects
   a single edit in the leading verb of a named rule, but the qualifiers after it ("ссылку",
   "приложение") must match word for word, so a fuzzy verb cannot silently change what kind of object
@@ -34,7 +41,9 @@ Runtime daemon, and command matching by a pure Foundation parser that never sees
 - **Tinycast owns the microphone, not the reverse.** `SpeechVoiceMicrophone` is `@MainActor` while
   `SpeechVoiceAudioEngine` is a plain object whose real-time tap runs on the audio thread and hops
   to the main actor via a `Task`; the engine callback never touches UI state. An unplugging headset
-  reports `onDeviceLost` and the session ends cleanly with the audio it already captured.
+  reports `onDeviceLost` and the session ends cleanly with the audio it already captured. One
+  instance serves both voice actions: every `stop()` bumps an epoch, so a `start()` still waiting on
+  the permission prompt can never install a tap that no owner would ever release.
 - **The catalog window is owned by AppCore.** `AppCore.voiceCommandCatalogWindow` owns one reusable
   `NSWindow`; both "покажи голосовые команды" and the disambiguation choice list present in it,
   swapping `contentView` and title. `isReleasedWhenClosed` is false, so dismissing keeps the shell.
@@ -47,16 +56,27 @@ Runtime daemon, and command matching by a pure Foundation parser that never sees
 The pipeline is one direction, with no branch that skips a stage:
 
 ```text
-SpeechRuntimeVoiceAsk → SpeechVoiceMicrophone → SpeechRuntimeTranscriber
+SpeechRuntimeVoiceAsk → SpeechVoiceCapture → SpeechVoiceMicrophone → SpeechRuntimeTranscriber
     → SpeechVoiceCommandParser → SpeechVoiceCommandRouter
 ```
 
-`SpeechRuntimeVoiceAsk` is the `@MainActor @Observable` session owner created by `AppCore`. It owns
-the microphone, the transcriber, and the floating listening pill, plus a generation counter that
-makes every async callback a no-op once it is superseded. Capture starts before the model connects:
-while the transcriber warms up, up to 30 seconds of early audio (1.92 MiB at mono 16 kHz f32) is
-buffered, so a short Hyper hold never loses its first words to a cold ANE. Stopping is a 280 ms
-release after the tap's last frame, not an immediate cut.
+`SpeechRuntimeVoiceAsk` is the `@MainActor @Observable` session owner created by `AppCore`. It
+reaches the microphone, the transcriber and the floating listening pill through
+`AppCore.speechVoiceCapture`, the one instance Dictation also drives: a claim is refused while the
+other action holds capture, and a release only stops what its own action claimed. It keeps a
+generation counter that makes every async callback a no-op once it is superseded. Capture starts
+before the model connects: while the transcriber warms up, up to 30 seconds of early audio (1.92 MiB
+at mono 16 kHz f32) is buffered, so a short Hyper hold never loses its first words to a cold ANE.
+Stopping is a 280 ms release after the tap's last frame, not an immediate cut.
+
+The stages split at one boundary: Tinycast owns capture, the command grammar and delivery, while
+the installed Speech Runtime daemon owns transcription and every text transform on the transcript.
+The two are a pair — the client expects the daemon's current API surface, and an endpoint the
+installed Runtime lacks (an older build) surfaces as an actionable "update Speech Runtime" message,
+never a local re-implementation of the missing stage. Dictionary substitution and transcript
+cleanup live on the Runtime side of that line: SpeechCast sends the dictionary's effective rules to
+the daemon and applies the returned text as-is, so no client-side algorithm can drift from what the
+Runtime does with the same rules.
 
 The session has four triggers. A short hotkey tap toggles; holding it past 250 ms is push-to-talk,
 and releasing finishes. A Hyper key held 250 ms starts a hold session that finishes on release; a
@@ -76,7 +96,9 @@ the trigger entry chose one.
 ## Key files
 
 - `Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift` — session owner: phases, early audio,
-  finish policy, pill, generation guards.
+  finish policy, generation guards.
+- `Tinycast/Features/VoiceRuntime/Service/SpeechVoiceCapture.swift` — the one microphone, transcriber
+  and pill, with per-owner claim/release so neither voice action can cancel the other.
 - `Tinycast/Features/VoiceAsk/SpeechVoiceMicrophone.swift` — mic capture, permission, device-loss
   detection, 16 kHz mono conversion in the audio tap.
 - `Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift` — pure Foundation command grammar and
@@ -85,6 +107,10 @@ the trigger entry chose one.
   intents and the last-target history.
 - `Tinycast/Features/VoiceAsk/SpeechVoiceCommandCatalog.swift` — the catalog window and its views.
 - `Tinycast/Features/VoiceAsk/AIVoiceTrigger.swift` — trigger model and `AIVoiceTriggerStore`.
+- `Tinycast/Features/VoiceRuntime/Service/SpeechRuntimeService.swift` — daemon lifecycle: health
+  probe, launch escalation, model discovery, status.
+- `Tinycast/Features/VoiceRuntime/Service/SpeechRuntimeLaunchPlan.swift` — the launch-escalation
+  decision table the service walks (probe → kickstart → bootstrap → open app).
 
 ## Adding commands
 
@@ -146,5 +172,8 @@ a new pattern, rule, or trigger gets its `expect` line in the same file, and a n
 normalize stage gets both a positive and a negative case — the pipeline guards are what the invariants
 above describe, so the table should pin them.
 `voice-input-test` compiles `SpeechVoiceMicrophone.swift` with an injectable `inputAvailable`, so a
-Mac with no input device is simulated without touching hardware; `voice-alias-test` guards the
-AliasStore integration the catalog's edited aliases reuse.
+Mac with no input device is simulated without touching hardware; `voice-capture-test` compiles the
+shared capture with the microphone, transcriber, client and pill, and pins the ownership contract —
+one claim at a time, a refused claim, a foreign release that leaves the holder live, and a pill that
+only its own action may show, update or hide. `voice-alias-test` guards the AliasStore integration
+the catalog's edited aliases reuse.

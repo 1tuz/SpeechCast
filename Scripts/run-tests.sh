@@ -192,6 +192,35 @@ run voice-ai-trigger-test  Tinycast/Features/Launcher/Model/SearchRelevance.swif
                            Tinycast/Features/VoiceAsk/AIVoiceTrigger.swift
 run voice-alias-test       Tinycast/Features/Launcher/Service/AliasStore.swift
 run voice-input-test       Tinycast/Features/VoiceAsk/SpeechVoiceMicrophone.swift
+run voice-shortcut-test    Tinycast/Features/VoiceDictation/Model/VoiceShortcutGate.swift
+run voice-capture-test     Tinycast/Features/VoiceRuntime/Service/SpeechVoiceCapture.swift \
+                           Tinycast/Features/VoiceRuntime/Service/SpeechRuntimeClient.swift \
+                           Tinycast/Features/VoiceRuntime/Service/SpeechRuntimeTranscriber.swift \
+                           Tinycast/Features/VoiceRuntime/UI/SpeechVoicePill.swift \
+                           Tinycast/Features/VoiceAsk/SpeechVoiceMicrophone.swift
+run dictation-formatter-test Tinycast/Features/VoiceDictation/Model/DictationTextFormatter.swift
+run dictation-dictionary-test Tinycast/Features/VoiceDictation/Model/AutoLearnPolicy.swift \
+                           Tinycast/Features/VoiceDictation/Model/DictationDictionary.swift
+run dictation-insertion-test   Tinycast/Features/VoiceDictation/Model/DictationTextFormatter.swift \
+                           Tinycast/Features/VoiceDictation/Model/VoiceShortcutGate.swift \
+                           Tinycast/Features/VoiceDictation/Model/DictationInsertionPolicy.swift \
+                           Tinycast/Features/VoiceDictation/Model/DictationDictionary.swift \
+                           Tinycast/Features/VoiceDictation/Model/AutoLearnPolicy.swift \
+                           Tinycast/Features/VoiceDictation/Service/AutoLearnMonitor.swift \
+                           Tinycast/Features/VoiceDictation/Service/DictationInsertionContext.swift \
+                           Tinycast/Platform/AccessibilityText.swift
+run auto-learn-test        Tinycast/Features/VoiceDictation/Model/DictationDictionary.swift \
+                           Tinycast/Features/VoiceDictation/Model/AutoLearnPolicy.swift
+run speech-runtime-service-test \
+                           Tinycast/Platform/ProcessExit.swift \
+                           Tinycast/Features/VoiceRuntime/Service/SpeechRuntimeService.swift \
+                           Tinycast/Features/VoiceRuntime/Service/SpeechRuntimeLaunchPlan.swift \
+                           Tinycast/Features/VoiceRuntime/Service/SpeechRuntimeTranscriber.swift \
+                           Tinycast/Features/VoiceRuntime/Service/SpeechRuntimeClient.swift \
+                           Tinycast/Features/VoiceAsk/SpeechVoiceMicrophone.swift
+run speech-runtime-postprocess-test Tinycast/Features/VoiceRuntime/Service/SpeechRuntimeClient.swift \
+                           Tinycast/Features/VoiceRuntime/Service/SpeechRuntimeDictationPostprocess.swift \
+                           Tinycast/Features/VoiceAsk/SpeechVoiceMicrophone.swift
 run calc-test              Tinycast/Features/Calculator/Model/*.swift
 run index calc-performance Tinycast/Features/Calculator/Model/*.swift
 run calendar-test          Tinycast/Features/Calendar/Model/*.swift \

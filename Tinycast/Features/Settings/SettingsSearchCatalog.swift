@@ -108,8 +108,8 @@ enum SettingsSearchCatalog {
     static let entries: [SettingsSearchEntry] =
         general + applications + systemSettings + systemActions + commands + quicklinks
         + appleShortcuts + fallbacks + clipboard + snippets + fileSearch + windowManagement
-        + navigation + notes + calendar + focus + emoji + ai + quickActions + extensions + permissions
-        + backup + about
+        + navigation + notes + calendar + focus + emoji + voice + ai + quickActions + extensions
+        + permissions + backup + about
 
     private static let general: [SettingsSearchEntry] = [
         .init(pane: .general, keywords: ["preferences", "settings"]),
@@ -533,6 +533,31 @@ enum SettingsSearchCatalog {
         .init(
             .emojiAppearance, "Column Count",
             keywords: ["columns", "density", "zoom", "six", "eight", "ten"])
+    ]
+
+    private static let voice: [SettingsSearchEntry] = [
+        .init(
+            pane: .voice,
+            keywords: [
+                "dictation", "speech", "microphone", "transcription", "asr", "speech runtime",
+                "диктовка", "речь", "микрофон", "транскрипция"
+            ]),
+        .init(.voiceVoice, "Dictation", keywords: ["toggle", "enable", "speech", "typing"]),
+        .init(
+            group: .voiceShortcuts, "Shortcuts",
+            keywords: ["hotkey", "hold", "toggle", "push to talk"]),
+        .init(
+            group: .voiceDictionary, "Dictionary",
+            keywords: ["terms", "replacements", "corrections"]),
+        .init(
+            .voiceAutoLearn, "Auto Learn",
+            keywords: ["learn", "corrections", "suggestions", "opt in"]),
+        .init(
+            .voiceVoice, "Text Cleanup",
+            keywords: ["filler", "punctuation", "cleanup", "postprocessing"]),
+        .init(
+            .voiceVoice, "Speech Runtime",
+            keywords: ["service", "engine", "model", "install", "status"])
     ]
 
     private static let focus: [SettingsSearchEntry] = [

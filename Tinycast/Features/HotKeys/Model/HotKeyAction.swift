@@ -4,6 +4,8 @@ enum HotKeyAction: Hashable, Sendable {
     /// Fixed actions with no command row of their own.
     case togglePalette
     case voiceAsk
+    /// Dictation inserts into the field the user was in; Voice Ask feeds the launcher.
+    case dictation
     /// Parameterised over the catalog, so a new built-in command is bindable with no case here.
     case command(CommandID)
     case app(bundleID: String)
@@ -27,6 +29,7 @@ enum HotKeyAction: Hashable, Sendable {
         switch self {
         case .togglePalette: "hotkey.togglePalette"
         case .voiceAsk: "hotkey.voiceAsk"
+        case .dictation: "hotkey.dictation"
         case .command(let id): "hotkey." + id.rawValue
         case .app(let bundleID): "hotkey.app." + bundleID
         case .settingsPane(let bundleID): "hotkey.pane." + bundleID
@@ -47,6 +50,6 @@ enum HotKeyAction: Hashable, Sendable {
     }
 
     static let builtInActions: [HotKeyAction] =
-        [.togglePalette, .voiceAsk] + CommandID.allCases.compactMap(\.hotKeyAction)
+        [.togglePalette, .voiceAsk, .dictation] + CommandID.allCases.compactMap(\.hotKeyAction)
 
 }

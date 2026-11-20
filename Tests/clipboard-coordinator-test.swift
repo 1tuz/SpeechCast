@@ -217,6 +217,7 @@ struct ClipboardCoordinatorTests {
 // Platform effects are recorded so the shipped coordinator cannot write to the user's clipboard.
 @MainActor
 final class AppCore {
+    var isShowingDialog = false
     var editedText: String? = "final selected"
     var onEdit: (() -> Void)?
     var messages: [String] = []
@@ -225,10 +226,22 @@ final class AppCore {
     func showProgress(_ text: String) {}
     func applyClipboardTextSearch() {}
     func confirm(title: String, message: String, symbol: String, confirmTitle: String) async -> Bool { false }
+    func reportFailure(
+        title: String, message: String, symbol: String, recovery: String?
+    ) async -> Bool { false }
 }
 
 enum DialogTone { case neutral, danger }
 enum CommandID { case clipboardHistory, pasteSequentially }
+
+@MainActor
+enum Permissions {
+    static var accessibilityGranted = true
+    static var openedAccessibilitySettings = 0
+    static func ensureAccessibility() -> Bool { accessibilityGranted }
+    static func isAccessibilityTrusted() -> Bool { accessibilityGranted }
+    static func openAccessibilitySettings() { openedAccessibilitySettings += 1 }
+}
 
 @MainActor
 final class AppSettings {
@@ -273,6 +286,10 @@ enum ClipboardTextWorker {
 
 @MainActor
 enum Paster {
+    enum HistoryPasteFailure: Error {
+        case needsAccessibility, noTarget, focusChanged, unavailable, clipboardChanged, eventCreationFailed
+    }
+
     static var copies: [ClipboardItem] = []
     static var plainCopies: [String] = []
     @discardableResult
@@ -283,6 +300,22 @@ enum Paster {
     }
     @discardableResult
     static func copyPlainText(_ text: String) -> Bool { plainCopies.append(text); return true }
+    static func checkHistoryPasteTarget(_ app: NSRunningApplication?)
+        throws(HistoryPasteFailure) -> NSRunningApplication
+    {
+        guard let app else { throw .noTarget }
+        return app
+    }
+    static func prepareHistoryPaste(
+        _ item: ClipboardItem, store: ClipboardStore, into app: NSRunningApplication?,
+        plainText: Bool, on pb: NSPasteboard = .general
+    ) throws(HistoryPasteFailure) -> (target: NSRunningApplication, changeCount: Int) {
+        let target = try checkHistoryPasteTarget(app)
+        return (target, pb.changeCount)
+    }
+    static func postHistoryPaste(into app: NSRunningApplication, changeCount: Int)
+        throws(HistoryPasteFailure)
+    {}
     static func paste(
         _ item: ClipboardItem, store: ClipboardStore, previousApp: NSRunningApplication?
     ) -> Bool { true }

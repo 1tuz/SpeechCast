@@ -47,18 +47,59 @@ struct SettingsFileTest {
                 "general", "appearance", "hyperKey", "calculator", "search", "applications",
                 "systemSettings", "systemActions", "commands", "quicklinks", "appleShortcuts", "ai",
                 "quickActions", "fileSearch", "notes", "snippets", "navigation",
-                "windowManagement", "clipboard", "emoji", "calendar", "extensions"
+                "windowManagement", "clipboard", "emoji", "calendar", "voice", "extensions"
             ])
 
         // A file that could switch one of these on would grant what only the app may ask for.
         let grantPaths = [
             "snippets.enabled", "extensions.enabled", "calendar.enabled",
             "calendar.autoJoinMeetings", "calendar.cameraPreview", "quickActions.enabled",
-            "ai.mcpEnabled", "mcp.enabled", "clipboard.textSearchEnabled"
+            "ai.mcpEnabled", "mcp.enabled", "clipboard.textSearchEnabled",
+            "dictation.enabled", "dictation.autoLearnEnabled"
         ]
         check(
             "no capability grant has a settings.json key",
             grantPaths.allSatisfy { SettingsFileKey(rawValue: $0) == nil })
+
+        // The voice section: exactly four keys, spelled out, none of them a capability grant.
+        check(
+            "voice.dictationModel reads the model name",
+            SettingsFileKey.voiceDictationModel.rawValue == "voice.dictationModel")
+        check(
+            "voice.textCleanup reads dictation cleanup",
+            SettingsFileKey.voiceTextCleanup.rawValue == "voice.textCleanup")
+        check(
+            "voice.dictationShortcutMode reads the dictation shortcut mode",
+            SettingsFileKey.voiceDictationShortcutMode.rawValue == "voice.dictationShortcutMode")
+        check(
+            "voice.commandsShortcutMode reads the commands shortcut mode",
+            SettingsFileKey.voiceCommandsShortcutMode.rawValue == "voice.commandsShortcutMode")
+        check(
+            "no settings.json key can grant dictation enablement",
+            SettingsFileKey(rawValue: "dictation.enabled") == nil)
+        check(
+            "no settings.json key can grant dictation auto-learn",
+            SettingsFileKey(rawValue: "dictation.autoLearnEnabled") == nil)
+        check(
+            "no case is named dictationEnabled",
+            !SettingsFileKey.allCases.contains { $0.rawValue.hasSuffix(".dictationEnabled") })
+        check(
+            "no case is named dictationAutoLearnEnabled",
+            !SettingsFileKey.allCases.contains { $0.rawValue.hasSuffix(".dictationAutoLearnEnabled") })
+        check(
+            "the dictionary file has no settings.json key",
+            !SettingsFileKey.allCases.contains { $0.rawValue.contains("dictionary") })
+        let voiceKeys = SettingsFileKey.allCases.filter { $0.section == "voice" }
+        let extraVoiceKeys = voiceKeys.map(\.rawValue).filter {
+            ![
+                "voice.dictationModel", "voice.textCleanup", "voice.dictationShortcutMode",
+                "voice.commandsShortcutMode"
+            ].contains($0)
+        }
+        check(
+            "the voice section is exactly the four non-capability keys"
+                + (extraVoiceKeys.isEmpty ? "" : " — \(extraVoiceKeys.sorted().joined(separator: ", "))"),
+            voiceKeys.count == 4 && extraVoiceKeys.isEmpty)
     }
 
     // MARK: - Values

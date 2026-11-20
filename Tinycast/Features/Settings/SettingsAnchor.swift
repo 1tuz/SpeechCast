@@ -47,6 +47,11 @@ extension SettingsAnchor {
 
     static let fallbacksFallbacks = Self(tab: .fallbacks, title: "Fallbacks")
 
+    static let voiceVoice = Self(tab: .voice, title: "Voice")
+    static let voiceShortcuts = Self(tab: .voice, title: "Shortcuts")
+    static let voiceDictionary = Self(tab: .voice, title: "Dictionary")
+    static let voiceAutoLearn = Self(tab: .voice, title: "Auto Learn")
+
     static let aiAI = Self(tab: .ai, title: "AI")
     static let aiProviders = Self(tab: .ai, title: "Providers")
     static let aiDefault = Self(tab: .ai, title: "Default")

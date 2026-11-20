@@ -2,7 +2,6 @@ import AppKit
 @preconcurrency import AVFoundation
 import Foundation
 import Observation
-import SwiftUI
 
 /// Voice input is a client of Speech Runtime, not an additional model host.
 /// The user controls the daemon and model downloads in Speech Runtime.app.
@@ -19,13 +18,12 @@ final class SpeechRuntimeVoiceAsk {
     private(set) var availability = "Not checked"
 
     @ObservationIgnored private unowned let core: AppCore
-    @ObservationIgnored private let microphone = SpeechVoiceMicrophone()
-    @ObservationIgnored private let transcription = SpeechRuntimeTranscriber()
-    @ObservationIgnored private let pill = SpeechVoicePillController()
     @ObservationIgnored private var runTask: Task<Void, Never>?
     @ObservationIgnored private var finishTask: Task<Void, Never>?
     @ObservationIgnored private var pendingFinishCaptureTask: Task<Void, Never>?
     @ObservationIgnored private var generation = 0
+    /// Bumped when a session ends, so a callback queued by the last one cannot reach the next.
+    @ObservationIgnored private var sessionToken = 0
     @ObservationIgnored private var fromPalette = false
     @ObservationIgnored private var savedQuery: String?
     @ObservationIgnored private var earlyAudio = Data()
@@ -50,17 +48,29 @@ final class SpeechRuntimeVoiceAsk {
         }
     }
 
+    /// The shared capture: Dictation drives the same instance, so a claim is what keeps one tap live.
+    private var capture: SpeechVoiceCapture { core.speechVoiceCapture }
+    private var microphone: SpeechVoiceMicrophone { capture.microphone }
+    private var transcription: SpeechRuntimeTranscriber { capture.transcriber }
+
     init(core: AppCore) {
         self.core = core
-        microphone.onAudio = { [weak self] data, level in
-            self?.receiveAudio(data, level: level)
-        }
-        microphone.onDeviceLost = { [weak self] in
-            self?.microphoneWentAway()
-        }
-        transcription.onFinal = { [weak self] phrase in
-            self?.receiveFinal(phrase)
-        }
+    }
+
+    /// Every callback the shared capture makes while this action owns it, and only then.
+    private func handlers() -> SpeechVoiceCapture.Handlers {
+        let token = sessionToken
+        return SpeechVoiceCapture.Handlers(
+            audio: { [weak self] data, level in
+                self?.receiveAudio(data, level: level, token: token)
+            },
+            deviceLost: { [weak self] in self?.microphoneWentAway(token: token) },
+            final: { [weak self] phrase in self?.receiveFinal(phrase, token: token) })
+    }
+
+    private func releaseCapture() {
+        sessionToken &+= 1
+        capture.release(.voiceAsk)
     }
 
     func toggleFromPalette() {
@@ -71,22 +81,36 @@ final class SpeechRuntimeVoiceAsk {
         }
     }
 
-    /// A short tap toggles; holding a separately configured shortcut is push-to-talk.
+    /// The mode is the user's per action: "smart" reads a short tap as toggle and a hold as talk.
     func hotKeyDown() {
-        guard hotKeyDownAt == nil else { return }
-        if isActive {
+        switch VoiceShortcutGate.keyDown(mode: core.settings.voiceShortcutMode, isActive: isActive) {
+        case .start:
+            hotKeyDownAt = .now
+            start(fromPalette: core.paletteCoordinator.isVisible)
+        case .finish:
             requestFinish()
-            return
+        case .ignore:
+            break
         }
-        hotKeyDownAt = .now
-        start(fromPalette: core.paletteCoordinator.isVisible)
     }
 
     func hotKeyUp() {
         guard let down = hotKeyDownAt else { return }
         hotKeyDownAt = nil
-        if down.duration(to: .now) >= .milliseconds(250) { requestFinish() }
+        let held = down.duration(to: .now)
+        if VoiceShortcutGate.keyUp(mode: core.settings.voiceShortcutMode, held: held) == .finish {
+            requestFinish()
+        }
     }
+
+    private var pillModel: SpeechVoicePillModel {
+        SpeechVoicePillModel(
+            title: phaseTitle, detail: transcript, level: level,
+            isListening: phase == .listening,
+            onCancel: { [weak self] in self?.cancel() })
+    }
+
+    private func refreshPill() { capture.updatePill(pillModel, for: .voiceAsk) }
 
     /// This is called only after an unused Hyper key has been held for 250 ms.
     func beginHyperHold() {
@@ -126,8 +150,7 @@ final class SpeechRuntimeVoiceAsk {
         finishTask = nil
         pendingFinishCaptureTask?.cancel()
         pendingFinishCaptureTask = nil
-        microphone.stop()
-        transcription.cancel()
+        releaseCapture()
         earlyAudio.removeAll(keepingCapacity: false)
         level = 0
         stopWhenReady = false
@@ -137,13 +160,15 @@ final class SpeechRuntimeVoiceAsk {
         savedQuery = nil
         transcript = ""
         phase = .idle
-        pill.hide()
+        capture.hidePill(for: .voiceAsk)
     }
 
     private func start(fromPalette: Bool) {
         guard UserDefaults.standard.bool(forKey: "speechVoice.enabled") else { return }
         guard core.settings.aiEnabled else { return }
         guard !isActive else { return }
+        // Dictation may hold the microphone: the other action's session is never interrupted.
+        guard capture.claim(.voiceAsk, handlers: handlers()) else { return }
         generation &+= 1
         let id = generation
         self.fromPalette = fromPalette
@@ -157,7 +182,7 @@ final class SpeechRuntimeVoiceAsk {
             core.palette.query = ""
         } else {
             savedQuery = nil
-            pill.show(voice: self)
+            capture.showPill(pillModel, for: .voiceAsk)
         }
         runTask = Task { [weak self] in
             await self?.runSession(generation: id)
@@ -180,16 +205,19 @@ final class SpeechRuntimeVoiceAsk {
             if !earlyAudio.isEmpty { transcription.appendAudio(earlyAudio) }
             earlyAudio.removeAll(keepingCapacity: false)
             phase = .listening
+            refreshPill()
             if stopWhenReady { requestFinish() }
         } catch {
-            guard id == generation else { return }
+            guard id == generation, !(error is CancellationError) else { return }
             fail(error.localizedDescription)
         }
     }
 
-    private func receiveAudio(_ data: Data, level: Float) {
+    private func receiveAudio(_ data: Data, level: Float, token: Int) {
+        guard token == sessionToken else { return }
         guard !data.isEmpty else { return }
         self.level = level
+        refreshPill()
         switch phase {
         case .connecting:
             // 30 seconds of mono/16 kHz/f32 audio is only 1.92 MiB.
@@ -207,8 +235,8 @@ final class SpeechRuntimeVoiceAsk {
     }
 
     /// The headset left mid-dictation: keep what was said, finish without more audio.
-    private func microphoneWentAway() {
-        guard isActive else { return }
+    private func microphoneWentAway(token: Int) {
+        guard token == sessionToken, isActive else { return }
         switch phase {
         case .connecting:
             fail("No microphone available")
@@ -219,11 +247,12 @@ final class SpeechRuntimeVoiceAsk {
         }
     }
 
-    private func receiveFinal(_ phrase: String) {
-        guard isActive else { return }
+    private func receiveFinal(_ phrase: String, token: Int) {
+        guard token == sessionToken, isActive else { return }
         let cleaned = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         transcript = transcript.isEmpty ? cleaned : transcript + " " + cleaned
+        refreshPill()
         if fromPalette { core.palette.query = transcript }
     }
 
@@ -245,6 +274,7 @@ final class SpeechRuntimeVoiceAsk {
             }
         case .listening:
             phase = .finishing
+            refreshPill()
             let id = generation
             finishTask = Task { [weak self] in
                 await self?.finish(generation: id)
@@ -271,7 +301,7 @@ final class SpeechRuntimeVoiceAsk {
             }
             let previousQuery = savedQuery
             savedQuery = nil
-            pill.hide()
+            releaseCapture()
             phase = .idle
             hotKeyDownAt = nil
             hyperHold = false
@@ -291,7 +321,7 @@ final class SpeechRuntimeVoiceAsk {
                 core.quickAICoordinator.composeVoicePrompt(result)
             }
         } catch {
-            guard id == generation else { return }
+            guard id == generation, !(error is CancellationError) else { return }
             fail(error.localizedDescription)
         }
     }
@@ -304,8 +334,7 @@ final class SpeechRuntimeVoiceAsk {
         finishTask = nil
         pendingFinishCaptureTask?.cancel()
         pendingFinishCaptureTask = nil
-        microphone.stop()
-        transcription.cancel()
+        releaseCapture()
         earlyAudio.removeAll(keepingCapacity: false)
         stopWhenReady = false
         hotKeyDownAt = nil
@@ -313,366 +342,14 @@ final class SpeechRuntimeVoiceAsk {
         if let savedQuery { core.palette.query = savedQuery }
         savedQuery = nil
         phase = .failed(message)
-        pill.show(voice: self)
+        capture.showPill(pillModel, for: .voiceAsk)
         let id = generation
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(3))
+            // Another action's pill is not ours to hide.
             guard let self, id == self.generation else { return }
-            self.pill.hide()
+            self.capture.hidePill(for: .voiceAsk)
             self.phase = .idle
-        }
-    }
-}
-
-private struct SpeechRuntimeModel: Decodable {
-    let model: String
-    let loaded: Bool?
-    let capabilities: Capabilities?
-
-    struct Capabilities: Decodable {
-        let streamingSessions: Bool?
-        enum CodingKeys: String, CodingKey { case streamingSessions = "streaming_sessions" }
-    }
-}
-
-private struct SpeechRuntimeModels: Decodable {
-    let models: [SpeechRuntimeModel]
-}
-
-private struct SpeechRuntimeStream: Decodable {
-    let stream: String
-}
-
-private struct SpeechRuntimeEvents: Decodable {
-    let next: Int
-    let ended: Bool
-    let events: [SpeechRuntimeEvent]
-}
-
-private struct SpeechRuntimeEvent: Decodable {
-    let event: String
-    let data: DataPayload
-
-    struct DataPayload: Decodable {
-        let text: String?
-        let message: String?
-    }
-}
-
-private struct SpeechRuntimeErrorBody: Decodable {
-    let error: String?
-}
-
-
-/// The API is intentionally local and fixed. The client never starts or terminates the daemon.
-@MainActor
-private final class SpeechRuntimeHTTP {
-    private let url = URL(string: "http://127.0.0.1:8477")!
-    private let session: URLSession
-    private let decoder = JSONDecoder()
-
-    init() {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 12
-        configuration.timeoutIntervalForResource = 180
-        configuration.urlCache = nil
-        session = URLSession(configuration: configuration)
-    }
-
-    private func token() throws -> String {
-        let file = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/SpeechRuntime/token")
-        guard let raw = try? String(contentsOf: file, encoding: .utf8) else {
-            throw SpeechVoiceFailure(detail: "Speech Runtime token not found. Turn on Speech Runtime.app first.")
-        }
-        let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else { throw SpeechVoiceFailure(detail: "Speech Runtime token is empty") }
-        return token
-    }
-
-    private func request(
-        _ method: String, _ path: String, query: [URLQueryItem] = [],
-        body: Data? = nil, contentType: String? = nil,
-        extraHeaders: [String: String] = [:], timeout: TimeInterval = 12
-    ) async throws -> Data {
-        var components = URLComponents(url: url.appendingPathComponent(String(path.dropFirst())),
-                                       resolvingAgainstBaseURL: false)!
-        if !query.isEmpty { components.queryItems = query }
-        var request = URLRequest(url: components.url!)
-        request.httpMethod = method
-        request.timeoutInterval = timeout
-        request.setValue("Bearer " + (try token()), forHTTPHeaderField: "Authorization")
-        if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
-        if let body { request.httpBody = body }
-        for (key, value) in extraHeaders { request.setValue(value, forHTTPHeaderField: key) }
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw SpeechVoiceFailure(detail: "Cannot reach Speech Runtime at 127.0.0.1:8477: \(error.localizedDescription)")
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw SpeechVoiceFailure(detail: "Speech Runtime returned an invalid HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            let message = (try? decoder.decode(SpeechRuntimeErrorBody.self, from: data).error)
-                ?? "HTTP \(http.statusCode)"
-            throw SpeechVoiceFailure(detail: "Speech Runtime: \(message)")
-        }
-        return data
-    }
-
-    private func json(_ object: [String: Any]) throws -> Data {
-        try JSONSerialization.data(withJSONObject: object)
-    }
-
-    func models() async throws -> [SpeechRuntimeModel] {
-        try decoder.decode(SpeechRuntimeModels.self, from: await request("GET", "/v1/models")).models
-    }
-
-    func load(_ model: String) async throws {
-        // Cold ANE compilation can take tens of seconds on first use.
-        _ = try await request("POST", "/v1/models/load", body: json(["model": model]),
-                              contentType: "application/json", timeout: 170)
-    }
-
-    func open(_ model: String) async throws -> String {
-        let data = try await request("POST", "/v1/streams", body: json(["model": model]),
-                                     contentType: "application/json")
-        return try decoder.decode(SpeechRuntimeStream.self, from: data).stream
-    }
-
-    func audio(_ stream: String, pcm: Data) async throws {
-        // Speech Runtime requires explicit sample format, not an implicit raw-PCM guess.
-        _ = try await request("POST", "/v1/streams/audio",
-                              query: [URLQueryItem(name: "stream", value: stream)],
-                              body: pcm, contentType: "application/octet-stream",
-                              extraHeaders: ["X-Sample-Format": "f32le", "X-Sample-Rate": "16000"])
-    }
-
-    func events(_ stream: String, since: Int) async throws -> SpeechRuntimeEvents {
-        let data = try await request("GET", "/v1/streams/events", query: [
-            URLQueryItem(name: "stream", value: stream),
-            URLQueryItem(name: "since", value: String(since)),
-            URLQueryItem(name: "wait", value: "0.75")
-        ])
-        return try decoder.decode(SpeechRuntimeEvents.self, from: data)
-    }
-
-    func end(_ stream: String) async throws {
-        _ = try await request("POST", "/v1/streams/end",
-                              query: [URLQueryItem(name: "stream", value: stream)], timeout: 30)
-    }
-
-    func cancel(_ stream: String) async {
-        _ = try? await request("DELETE", "/v1/streams",
-                               query: [URLQueryItem(name: "stream", value: stream)])
-    }
-}
-
-/// Serialises audio uploads and reads completed utterances while capture continues.
-@MainActor
-private final class SpeechRuntimeTranscriber {
-    var onFinal: ((String) -> Void)?
-    private let http = SpeechRuntimeHTTP()
-    private var stream: String?
-    private var upload = Data()
-    private var pendingBytes = 0
-    private var uploadTail: Task<Void, Error>?
-    private var polling: Task<Void, Error>?
-    private var completed: [String] = []
-    private var generation = 0
-    private var isFinishing = false
-    private var uploadFailure: Error?
-
-    func checkModels() async throws -> [SpeechRuntimeModel] { try await http.models() }
-
-    func start(model: String) async throws {
-        cancel()
-        let generation = self.generation
-        let models = try await http.models()
-        guard let selected = models.first(where: { $0.model == model }) else {
-            throw SpeechVoiceFailure(detail: "Model '\(model)' is not configured in Speech Runtime.app")
-        }
-        guard selected.capabilities?.streamingSessions == true else {
-            throw SpeechVoiceFailure(detail: "Model '\(model)' does not support streaming sessions")
-        }
-        if selected.loaded != true { try await http.load(model) }
-        guard generation == self.generation else { throw CancellationError() }
-        let stream = try await http.open(model)
-        guard generation == self.generation else {
-            await http.cancel(stream)
-            throw CancellationError()
-        }
-        self.stream = stream
-        polling = Task { [weak self] in
-            guard let self else { return }
-            try await self.pollEvents(stream: stream, generation: generation)
-        }
-    }
-
-    func appendAudio(_ data: Data) {
-        guard stream != nil, !isFinishing, uploadFailure == nil, !data.isEmpty else { return }
-        // Do not drop packets on a slow server: fail explicitly instead of corrupting the transcript.
-        if pendingBytes + upload.count + data.count > 4 * 16_000 * 4 {
-            uploadFailure = SpeechVoiceFailure(detail: "Speech Runtime audio upload fell behind by four seconds")
-            return
-        }
-        upload.append(data)
-        if upload.count >= 100 * 16 * 4 { flush() }
-    }
-
-    private func flush() {
-        guard let stream, !upload.isEmpty else { return }
-        let data = upload
-        upload.removeAll(keepingCapacity: true)
-        pendingBytes += data.count
-        let previous = uploadTail
-        let generation = self.generation
-        uploadTail = Task { [weak self] in
-            try await previous?.value
-            guard !Task.isCancelled, let self, generation == self.generation else {
-                throw CancellationError()
-            }
-            try await self.http.audio(stream, pcm: data)
-            guard generation == self.generation else { throw CancellationError() }
-            self.pendingBytes -= data.count
-        }
-    }
-
-    private func pollEvents(stream: String, generation: Int) async throws {
-        var since = 0
-        while !Task.isCancelled, generation == self.generation {
-            let next = try await http.events(stream, since: since)
-            since = next.next
-            for event in next.events {
-                if event.event == "final", let text = event.data.text {
-                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty {
-                        completed.append(trimmed)
-                        onFinal?(trimmed)
-                    }
-                } else if event.event == "error" {
-                    throw SpeechVoiceFailure(detail: event.data.message ?? "Speech Runtime streaming error")
-                }
-            }
-            if next.ended { return }
-        }
-        throw CancellationError()
-    }
-
-    func finish() async throws -> String {
-        guard let stream else { throw SpeechVoiceFailure(detail: "Speech Runtime stream is not open") }
-        isFinishing = true
-        flush()
-        if let uploadFailure { throw uploadFailure }
-        try await uploadTail?.value
-        try await http.end(stream)
-        // The server retains ended-session events briefly so clients can drain them.
-        try await polling?.value
-        let text = completed.joined(separator: " ")
-        reset()
-        return text
-    }
-
-    func cancel() {
-        generation &+= 1
-        uploadTail?.cancel()
-        polling?.cancel()
-        if let stream {
-            Task { [http] in await http.cancel(stream) }
-        }
-        reset()
-    }
-
-    private func reset() {
-        stream = nil
-        upload = Data()
-        pendingBytes = 0
-        uploadTail = nil
-        polling = nil
-        completed = []
-        isFinishing = false
-        uploadFailure = nil
-    }
-}
-@MainActor
-private final class SpeechVoicePillController {
-    private var panel: NSPanel?
-
-    func show(voice: SpeechRuntimeVoiceAsk) {
-        if panel == nil {
-            let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 62),
-                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered,
-                            defer: false)
-            p.isOpaque = false
-            p.backgroundColor = .clear
-            p.hasShadow = true
-            p.level = .floating
-            p.hidesOnDeactivate = false
-            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            p.isMovableByWindowBackground = true
-            panel = p
-        }
-        guard let panel else { return }
-        panel.contentView = NSHostingView(rootView: SpeechVoicePill(voice: voice))
-        if let screen = NSScreen.main ?? NSScreen.screens.first {
-            let frame = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2,
-                                         y: frame.maxY - panel.frame.height - 24))
-        }
-        panel.orderFrontRegardless()
-    }
-
-    func hide() {
-        panel?.orderOut(nil)
-        panel?.contentView = nil
-        panel = nil
-    }
-}
-
-private struct SpeechVoicePill: View {
-    let voice: SpeechRuntimeVoiceAsk
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: voice.phase == .listening ? "waveform" : "mic.fill")
-                .symbolRenderingMode(.hierarchical)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(voice.phaseTitle).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                if !voice.transcript.isEmpty {
-                    Text(voice.transcript).font(.system(size: 10)).foregroundStyle(.secondary)
-                        .lineLimit(1)
-                } else {
-                    GeometryReader { geo in
-                        Capsule().fill(.secondary.opacity(0.55))
-                            .frame(width: max(6, geo.size.width * CGFloat(voice.level)), height: 3)
-                            .frame(maxHeight: .infinity, alignment: .center)
-                    }
-                    .frame(height: 8)
-                }
-            }
-            Spacer(minLength: 0)
-            Button { voice.cancel() } label: {
-                Image(systemName: "xmark.circle.fill").font(.system(size: 15))
-            }
-            .buttonStyle(.plain)
-            .help("Cancel dictation")
-        }
-        .padding(.horizontal, 14)
-        .frame(width: 320, height: 60)
-        .modifier(SpeechVoiceGlass())
-    }
-}
-
-private struct SpeechVoiceGlass: ViewModifier {
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.glassEffect(.regular, in: Capsule())
-        } else {
-            content.background(.regularMaterial, in: Capsule())
         }
     }
 }
