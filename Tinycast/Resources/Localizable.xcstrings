@@ -2219,65 +2219,6 @@
         }
       }
     },
-    "%@ is up to date" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ ist auf dem neuesten Stand"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ is up to date"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ está actualizado"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ est à jour"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@は最新です"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@은(는) 최신 상태입니다"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ está atualizado"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@: установлена последняя версия"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 已是最新版本"
-          }
-        }
-      }
-    },
     "%@ isn't installed on this Mac." : {
       "localizations" : {
         "de" : {
@@ -27919,65 +27860,6 @@
         }
       }
     },
-    "Automatic follows StableBar's configured AeroSpace or yabai workspace source. Tiled windows are changed through that manager; custom pixel layouts and Rooms are limited to native mode. Floating windows keep SpeechCast sizing." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Automatisch folgt der in StableBar konfigurierten AeroSpace- oder yabai-Workspace-Quelle. Gekachelte Fenster werden über diesen Manager geändert; eigene Pixel-Layouts und Räume sind auf den nativen Modus beschränkt. Schwebende Fenster behalten die SpeechCast-Größen."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Automatic follows StableBar's configured AeroSpace or yabai workspace source. Tiled windows are changed through that manager; custom pixel layouts and Rooms are limited to native mode. Floating windows keep SpeechCast sizing."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Automático sigue la fuente de espacios de AeroSpace o yabai configurada en StableBar. Las ventanas en mosaico se cambian a través de ese gestor; los diseños de píxeles personalizados y las Rooms se limitan al modo nativo. Las ventanas flotantes conservan el tamaño de SpeechCast."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Automatique suit la source d'espaces AeroSpace ou yabai configurée dans StableBar. Les fenêtres en mosaïque sont modifiées via ce gestionnaire ; les dispositions en pixels personnalisées et les Rooms sont limitées au mode natif. Les fenêtres flottantes conservent le dimensionnement de SpeechCast."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "「自動」はStableBarで設定されたAeroSpaceまたはyabaiのワークスペースソースに従います。タイル状のウインドウはそのマネージャ経由で変更され、カスタムピクセルレイアウトとルームはネイティブモード限定です。フローティングウインドウはSpeechCastのサイズ指定を維持します。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "자동은 StableBar에 구성된 AeroSpace 또는 yabai 워크스페이스 소스를 따릅니다. 타일 윈도우는 해당 매니저를 통해 변경되며, 사용자 지정 픽셀 레이아웃과 룸은 네이티브 모드로 제한됩니다. 플로팅 윈도우는 SpeechCast 크기 조정을 유지합니다."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Automático segue a fonte de espaços do AeroSpace ou yabai configurada no StableBar. Janelas lado a lado são alteradas por esse gerenciador; layouts de pixels personalizados e Rooms ficam limitados ao modo nativo. Janelas flutuantes mantêm o dimensionamento do SpeechCast."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "«Автоматически» использует настроенный в StableBar источник рабочих столов AeroSpace или yabai. Мозаичные окна изменяются через этот менеджер; собственные пиксельные раскладки и комнаты ограничены нативным режимом. Плавающие окна сохраняют размеры SpeechCast."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“自动”会遵循 StableBar 中配置的 AeroSpace 或 yabai 工作区来源。平铺窗口通过该管理器更改；自定义像素布局和 Rooms 仅限原生模式。浮动窗口保留 SpeechCast 的尺寸调整。"
-          }
-        }
-      }
-    },
     "Automatically" : {
       "comment" : "Hide a started event automatically",
       "localizations" : {
@@ -32452,65 +32334,6 @@
         }
       }
     },
-    "Cancel dictation" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diktat abbrechen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cancel dictation"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cancelar dictado"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Annuler la dictée"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ディクテーションをキャンセル"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "받아쓰기 취소"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cancelar ditado"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Отменить диктовку"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "取消听写"
-          }
-        }
-      }
-    },
     "Cancelled" : {
       "localizations" : {
         "de" : {
@@ -34306,6 +34129,64 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "再次检查"
+          }
+        }
+      }
+    },
+    "Check again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut prüfen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check again"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volver a comprobar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vérifier à nouveau"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再確認する"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 확인"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verificar novamente"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверить ещё раз"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新检查"
           }
         }
       }
@@ -72798,56 +72679,56 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "value" : "Modell in Speech Runtime installieren…",
-            "state" : "translated"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "value" : "Instalar modelo en Speech Runtime…",
-            "state" : "translated"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "value" : "Installer le modèle dans Speech Runtime…",
-            "state" : "translated"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime にモデルをインストール…",
-            "state" : "translated"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime에 모델 설치…",
-            "state" : "translated"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "value" : "Instalar modelo no Speech Runtime…",
-            "state" : "translated"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "value" : "Установить модель в Speech Runtime…",
-            "state" : "translated"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "value" : "在 Speech Runtime 中安装模型…",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "Modell in Speech Runtime installieren…"
           }
         },
         "en" : {
           "stringUnit" : {
-            "value" : "Install Model in Speech Runtime…",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "Install Model in Speech Runtime…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalar modelo en Speech Runtime…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installer le modèle dans Speech Runtime…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime にモデルをインストール…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime에 모델 설치…"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalar modelo no Speech Runtime…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Установить модель в Speech Runtime…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Speech Runtime 中安装模型…"
           }
         }
       }
@@ -72906,65 +72787,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "从 GitHub 安装"
-          }
-        }
-      }
-    },
-    "Install that model in Speech Runtime.app" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieses Modell in Speech Runtime.app installieren"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Window unchanged"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Instala ese modelo en Speech Runtime.app"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Installez ce modèle dans Speech Runtime.app"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "そのモデルを Speech Runtime.app にインストールしてください"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "해당 모델을 Speech Runtime.app에 설치하십시오"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Instale esse modelo no Speech Runtime.app"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Установите эту модель в Speech Runtime.app"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Speech Runtime.app 中安装该模型"
           }
         }
       }
@@ -73720,6 +73542,64 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "界面大小"
+          }
+        }
+      }
+    },
+    "Invalid extension package: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültiges Erweiterungspaket: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invalid extension package: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paquete de extensión no válido: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paquet d’extension invalide : %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拡張機能パッケージが無効です: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "잘못된 확장 프로그램 패키지: %@"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pacote de extensão inválido: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Недопустимый пакет расширения: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "扩展程序包无效：%@"
           }
         }
       }
@@ -74533,124 +74413,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "加入"
-          }
-        }
-      }
-    },
-    "Join %@" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ beitreten"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Join %@"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unirse a %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rejoindre %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@に参加"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 참가"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Entrar em %@"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Присоединиться: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "加入 %@"
-          }
-        }
-      }
-    },
-    "Join %@?" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ beitreten?"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Join %@?"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Unirte a %@?"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rejoindre %@ ?"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@に参加しますか?"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@에 참가하시겠습니까?"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Entrar em %@?"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Присоединиться: %@?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "要加入 %@ 吗？"
           }
         }
       }
@@ -82499,65 +82261,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "模型"
-          }
-        }
-      }
-    },
-    "Models are installed and downloaded in Speech Runtime.app. Tinycast starts the runtime it finds and never downloads a model by itself." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modelle werden in Speech Runtime.app installiert und geladen. Tinycast startet die gefundene Runtime und lädt nie selbst ein Modell."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Window unchanged"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los modelos se instalan y descargan en Speech Runtime.app. Tinycast inicia el runtime que encuentra y nunca descarga un modelo por su cuenta."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les modèles sont installés et téléchargés dans Speech Runtime.app. Tinycast démarre le runtime qu'il trouve et ne télécharge jamais de modèle lui-même."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "モデルのインストールとダウンロードは Speech Runtime.app で行われます。Tinycast は見つかったランタイムを起動するだけで、モデルを自分でダウンロードすることはありません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "모델 설치 및 다운로드는 Speech Runtime.app에서 이루어집니다. Tinycast는 찾은 런타임을 시작할 뿐 모델을 직접 다운로드하지 않습니다."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Os modelos são instalados e descarregados no Speech Runtime.app. O Tinycast inicia o runtime que encontra e nunca descarrega um modelo por si."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Модели устанавливаются и загружаются в Speech Runtime.app. Tinycast запускает найденный рантайм и никогда не скачивает модель сам."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "模型在 Speech Runtime.app 中安装和下载。Tinycast 会启动它找到的运行时，绝不会自行下载模型。"
           }
         }
       }
@@ -120682,65 +120385,6 @@
         }
       }
     },
-    "Set up…" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einrichten…"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Window unchanged"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configurar…"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configurer…"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "設定…"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "설정…"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Configurar…"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Настроить…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "设置…"
-          }
-        }
-      }
-    },
     "Settings" : {
       "localizations" : {
         "de" : {
@@ -126438,115 +126082,56 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "value" : "Speech Runtime hat nicht innerhalb von %lld Sekunden geantwortet",
-            "state" : "translated"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime no respondió en %lld segundos",
-            "state" : "translated"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime n'a pas répondu sous %lld secondes",
-            "state" : "translated"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime が%lld秒以内に応答しませんでした",
-            "state" : "translated"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime이 %lld초 안에 응답하지 않았습니다",
-            "state" : "translated"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "value" : "O Speech Runtime não respondeu em %lld segundos",
-            "state" : "translated"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime не ответил за %lld секунд",
-            "state" : "translated"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime 在 %lld 秒内未响应",
-            "state" : "translated"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime did not answer within %lld seconds",
-            "state" : "translated"
-          }
-        }
-      }
-    },
-    "Speech Runtime did not answer within 20 seconds" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
             "state" : "translated",
-            "value" : "Speech Runtime hat nicht innerhalb von 20 Sekunden geantwortet"
+            "value" : "Speech Runtime hat nicht innerhalb von %lld Sekunden geantwortet"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Window unchanged"
+            "value" : "Speech Runtime did not answer within %lld seconds"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Speech Runtime no respondió en 20 segundos"
+            "value" : "Speech Runtime no respondió en %lld segundos"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Speech Runtime n'a pas répondu sous 20 secondes"
+            "value" : "Speech Runtime n'a pas répondu sous %lld secondes"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Speech Runtime が20秒以内に応答しませんでした"
+            "value" : "Speech Runtime が%lld秒以内に応答しませんでした"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Speech Runtime이 20초 안에 응답하지 않았습니다"
+            "value" : "Speech Runtime이 %lld초 안에 응답하지 않았습니다"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Speech Runtime não respondeu em 20 segundos"
+            "value" : "O Speech Runtime não respondeu em %lld segundos"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Speech Runtime не ответил за 20 секунд"
+            "value" : "Speech Runtime не ответил за %lld секунд"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Speech Runtime 在 20 秒内未响应"
+            "value" : "Speech Runtime 在 %lld 秒内未响应"
           }
         }
       }
@@ -127019,56 +126604,56 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "value" : "Speech Runtime antwortet nicht. Stattdessen wird die Download-Seite geöffnet.",
-            "state" : "translated"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime no responde. Se abrirá la página de descarga en su lugar.",
-            "state" : "translated"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime ne répond pas. La page de téléchargement s'ouvre à la place.",
-            "state" : "translated"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime が応答していません。代わりにダウンロードページを開きます。",
-            "state" : "translated"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime이 응답하지 않습니다. 대신 다운로드 페이지를 엽니다.",
-            "state" : "translated"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "value" : "O Speech Runtime não está a responder. A abrir a página de transferência em vez disso.",
-            "state" : "translated"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime не отвечает. Вместо этого открывается страница загрузки.",
-            "state" : "translated"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime 未响应。改为打开下载页面。",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "Speech Runtime antwortet nicht. Stattdessen wird die Download-Seite geöffnet."
           }
         },
         "en" : {
           "stringUnit" : {
-            "value" : "Speech Runtime isn't responding. Opening the download page instead.",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "Speech Runtime isn't responding. Opening the download page instead."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime no responde. Se abrirá la página de descarga en su lugar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime ne répond pas. La page de téléchargement s'ouvre à la place."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime が応答していません。代わりにダウンロードページを開きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime이 응답하지 않습니다. 대신 다운로드 페이지를 엽니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Speech Runtime não está a responder. A abrir a página de transferência em vez disso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime не отвечает. Вместо этого открывается страница загрузки."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime 未响应。改为打开下载页面。"
           }
         }
       }
@@ -127251,56 +126836,56 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "value" : "Speech Runtime erkennt Sprache lokal auf diesem Mac. Modelle werden nur in Speech Runtime.app heruntergeladen, mit Ihrer Bestätigung dort — Tinycast lädt nie eines herunter, und ein Modell wird erst geladen, wenn Sie das Diktieren starten.",
-            "state" : "translated"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime reconoce el habla localmente en este Mac. Los modelos solo se descargan en Speech Runtime.app, con tu confirmación allí — Tinycast nunca descarga ninguno y solo carga un modelo cuando empiezas a dictar.",
-            "state" : "translated"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime reconnaît la parole localement sur ce Mac. Les modèles ne sont téléchargés que dans Speech Runtime.app, avec votre confirmation à cet endroit — Tinycast n'en télécharge jamais et ne charge un modèle que lorsque vous commencez à dicter.",
-            "state" : "translated"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime は、このMac上で音声をローカルに認識します。モデルは Speech Runtime.app でのみ、そちらでの確認のうえダウンロードされます。Tinycast がモデルをダウンロードすることはなく、読み込むのはディクテーションを開始したときだけです。",
-            "state" : "translated"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime은 이 Mac에서 음성을 로컬로 인식합니다. 모델은 Speech Runtime.app에서만, 그곳에서 확인한 뒤 다운로드됩니다. Tinycast는 모델을 다운로드하지 않으며, 받아쓰기를 시작할 때만 모델을 불러옵니다.",
-            "state" : "translated"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "value" : "O Speech Runtime reconhece a fala localmente neste Mac. Os modelos só são transferidos no Speech Runtime.app, com a sua confirmação aí — o Tinycast nunca transfere nenhum e só carrega um modelo quando começa a ditar.",
-            "state" : "translated"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime распознаёт речь локально на этом Mac. Модели загружаются только в Speech Runtime.app и только с Вашим подтверждением там — Tinycast никогда ничего не загружает и подключает модель только когда Вы начинаете диктовку.",
-            "state" : "translated"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime 在这台 Mac 上本地识别语音。模型仅在 Speech Runtime.app 中下载，并在那里经您确认 — Tinycast 从不下载模型，仅在您开始听写时加载模型。",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "Speech Runtime erkennt Sprache lokal auf diesem Mac. Modelle werden nur in Speech Runtime.app heruntergeladen, mit Ihrer Bestätigung dort — Tinycast lädt nie eines herunter, und ein Modell wird erst geladen, wenn Sie das Diktieren starten."
           }
         },
         "en" : {
           "stringUnit" : {
-            "value" : "Speech Runtime recognizes speech locally on this Mac. Models are downloaded only in Speech Runtime.app, with your confirmation there — Tinycast never downloads one, and loads a model only when you start dictating.",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "Speech Runtime recognizes speech locally on this Mac. Models are downloaded only in Speech Runtime.app, with your confirmation there — Tinycast never downloads one, and loads a model only when you start dictating."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime reconoce el habla localmente en este Mac. Los modelos solo se descargan en Speech Runtime.app, con tu confirmación allí — Tinycast nunca descarga ninguno y solo carga un modelo cuando empiezas a dictar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime reconnaît la parole localement sur ce Mac. Les modèles ne sont téléchargés que dans Speech Runtime.app, avec votre confirmation à cet endroit — Tinycast n'en télécharge jamais et ne charge un modèle que lorsque vous commencez à dicter."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime は、このMac上で音声をローカルに認識します。モデルは Speech Runtime.app でのみ、そちらでの確認のうえダウンロードされます。Tinycast がモデルをダウンロードすることはなく、読み込むのはディクテーションを開始したときだけです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime은 이 Mac에서 음성을 로컬로 인식합니다. 모델은 Speech Runtime.app에서만, 그곳에서 확인한 뒤 다운로드됩니다. Tinycast는 모델을 다운로드하지 않으며, 받아쓰기를 시작할 때만 모델을 불러옵니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Speech Runtime reconhece a fala localmente neste Mac. Os modelos só são transferidos no Speech Runtime.app, com a sua confirmação aí — o Tinycast nunca transfere nenhum e só carrega um modelo quando começa a ditar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime распознаёт речь локально на этом Mac. Модели загружаются только в Speech Runtime.app и только с Вашим подтверждением там — Tinycast никогда ничего не загружает и подключает модель только когда Вы начинаете диктовку."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime 在这台 Mac 上本地识别语音。模型仅在 Speech Runtime.app 中下载，并在那里经您确认 — Tinycast 从不下载模型，仅在您开始听写时加载模型。"
           }
         }
       }
@@ -127775,56 +127360,56 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "value" : "Speech Runtime starten…",
-            "state" : "translated"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "value" : "Iniciar Speech Runtime…",
-            "state" : "translated"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "value" : "Démarrer Speech Runtime…",
-            "state" : "translated"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime を起動…",
-            "state" : "translated"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "value" : "Speech Runtime 실행…",
-            "state" : "translated"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "value" : "Iniciar o Speech Runtime…",
-            "state" : "translated"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "value" : "Запустить Speech Runtime…",
-            "state" : "translated"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "value" : "启动 Speech Runtime…",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "Speech Runtime starten…"
           }
         },
         "en" : {
           "stringUnit" : {
-            "value" : "Start Speech Runtime…",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "Start Speech Runtime…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciar Speech Runtime…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Démarrer Speech Runtime…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime を起動…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech Runtime 실행…"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciar o Speech Runtime…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запустить Speech Runtime…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启动 Speech Runtime…"
           }
         }
       }
@@ -134395,65 +133980,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "下载的应用未经 SpeechCast 的发布证书签名。"
-          }
-        }
-      }
-    },
-    "The downloaded app is not signed by the identity this copy was signed with." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die geladene App wurde nicht mit derselben Identität signiert wie diese Kopie."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The downloaded app is not signed by the identity this copy was signed with."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La app descargada no está firmada con la misma identidad que esta copia."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La signature de l’app téléchargée ne correspond pas à celle de la version installée."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ダウンロードしたAppは、このコピーの署名に使用されたIDで署名されていません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다운로드한 앱이 현재 앱과 동일한 서명자로 서명되지 않았습니다."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O app baixado não foi assinado pela mesma identidade que assinou esta cópia."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Загруженное приложение подписано не тем удостоверением, которым подписана эта копия."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "下载的 App 并非由此副本所用的身份签名。"
           }
         }
       }
@@ -147811,63 +147337,63 @@
     },
     "URL" : {
       "comment" : "Subtitle on the Open in Browser row for a typed web address",
-      "shouldTranslate" : false,
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "value" : "URL",
-            "state" : "translated"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "value" : "URL",
-            "state" : "translated"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "value" : "URL",
-            "state" : "translated"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "value" : "URL",
-            "state" : "translated"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "value" : "URL",
-            "state" : "translated"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "value" : "URL",
-            "state" : "translated"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "value" : "URL",
-            "state" : "translated"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "value" : "URL",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "URL"
           }
         },
         "en" : {
           "stringUnit" : {
-            "value" : "URL",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "URL"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL"
           }
         }
-      }
+      },
+      "shouldTranslate" : false
     },
     "URL Decode" : {
       "localizations" : {
@@ -156715,63 +156241,63 @@
     },
     "esc" : {
       "comment" : "Escape keycap legend; keep it short",
-      "shouldTranslate" : false,
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "value" : "esc",
-            "state" : "translated"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "value" : "esc",
-            "state" : "translated"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "value" : "esc",
-            "state" : "translated"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "value" : "esc",
-            "state" : "translated"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "value" : "esc",
-            "state" : "translated"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "value" : "esc",
-            "state" : "translated"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "value" : "esc",
-            "state" : "translated"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "value" : "esc",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "esc"
           }
         },
         "en" : {
           "stringUnit" : {
-            "value" : "esc",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "esc"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "esc"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "esc"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "esc"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "esc"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "esc"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "esc"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "esc"
           }
         }
-      }
+      },
+      "shouldTranslate" : false
     },
     "extensions-install-section" : {
       "localizations" : {
@@ -156950,63 +156476,63 @@
       "shouldTranslate" : false
     },
     "https://example.com" : {
-      "shouldTranslate" : false,
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "value" : "https://example.com",
-            "state" : "translated"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "value" : "https://example.com",
-            "state" : "translated"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "value" : "https://example.com",
-            "state" : "translated"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "value" : "https://example.com",
-            "state" : "translated"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "value" : "https://example.com",
-            "state" : "translated"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "value" : "https://example.com",
-            "state" : "translated"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "value" : "https://example.com",
-            "state" : "translated"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "value" : "https://example.com",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "https://example.com"
           }
         },
         "en" : {
           "stringUnit" : {
-            "value" : "https://example.com",
-            "state" : "translated"
+            "state" : "translated",
+            "value" : "https://example.com"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "https://example.com"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "https://example.com"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "https://example.com"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "https://example.com"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "https://example.com"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "https://example.com"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "https://example.com"
           }
         }
-      }
+      },
+      "shouldTranslate" : false
     },
     "in %@" : {
       "comment" : "A countdown, e.g. “in 5 min”",

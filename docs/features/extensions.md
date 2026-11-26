@@ -6,6 +6,7 @@ produces, rendered natively into the palette. No Electron, no browser, no Node.j
 - [How it works](#how-it-works) · [The JS runtime](#the-js-runtime) ·
   [The Swift host](#the-swift-host) · [Rendering](#rendering)
 - [Turning it on](#turning-it-on) · [Installing extensions](#installing-extensions) ·
+  [SpeechCast package contract](#speechcast-package-contract) ·
   [Installing from GitHub](#installing-from-github) · [Updates](#updates) · [Shortcuts](#shortcuts) · [Aliases](#aliases) · [Deeplinks](#deeplinks) ·
   [What's supported](#whats-supported) ·
   [What isn't](#what-isnt-supported-yet) · [Working on the runtime](#working-on-the-runtime)
@@ -490,6 +491,42 @@ never the multi-megabyte `.js.map` Raycast writes beside each bundle. Store `dis
 third-party packages external and ship them, pre-built CommonJS, under `node_modules/`; the embedded
 runtime resolves those from the command's directory, never above the extension's own folder, so
 they must survive the install. A build that inlined everything simply has no such folder.
+
+## SpeechCast package contract
+
+Packages from the separate `SpeechCast-Extensions` repository keep the existing Raycast layout and
+may opt in to a versioned SpeechCast contract in `package.json`:
+
+```json
+{
+  "speechcast": {
+    "schemaVersion": 1,
+    "apiVersion": 1
+  }
+}
+```
+
+The example is a fragment; `name`, `commands` and the built CommonJS command files are still required.
+`schemaVersion` identifies the metadata shape. `apiVersion` identifies the SpeechCast host contract
+generation, not an `@raycast/api` package version or a claim that every Raycast API is implemented.
+Generation 1 uses the supported surface documented below, including its existing limitations.
+
+`ExtensionManifest` accepts only these two keys and version 1 for each. JSON numbers `1`, `1.0` and
+`1e0` have the same meaning; booleans, strings, fractions and other numbers do not. A missing
+`speechcast` key preserves existing Raycast import behavior. A present but invalid or unsupported
+contract rejects the manifest, so it cannot silently fall back to the unversioned path. Catalog
+install, import and scan already use this parser; install reports the existing invalid-manifest
+error, and scan skips an invalid package. Rich compatibility diagnostics remain a later UI change.
+
+This contract does not grant or restrict permissions. Both forms run with the existing extension
+trust model: opt-in third-party code, broad host filesystem/process APIs, and the app's available OS
+access. A JavaScript context is not an OS sandbox. In particular, adding a `permissions` key to this
+v1 object is rejected rather than implying enforcement that does not exist.
+
+No remote catalog or new updater is enabled by this field. Add a built folder through the existing
+installation path. Package release versions remain distinct from these two contract versions.
+The repository boundary and staged migration are specified in
+[the extension refactoring plan](../refactoring/extensions.md).
 
 ## Installing from GitHub
 

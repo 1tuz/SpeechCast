@@ -1,0 +1,376 @@
+diff --git a/Scripts/run-tests.sh b/Scripts/run-tests.sh
+index 9c1ceeb..ab2d05e 100755
+--- a/Scripts/run-tests.sh
++++ b/Scripts/run-tests.sh
+@@ -687,6 +687,10 @@ run backup-archive-test   Tinycast/Platform/AppPaths.swift \
+                            Tinycast/Features/Backup/Service/BackupStaging.swift
+ E=Tinycast/Features/Extensions
+ run symbols-test           $E/Service/SymbolCatalog.swift
++run ext-contract-test      $E/Model/ExtensionManifest.swift \
++                           $E/Model/ExtensionRefreshPolicy.swift \
++                           $E/Model/ExtensionRefreshState.swift \
++                           Tinycast/Platform/AppDisplayName.swift
+ run ext-cleanup-test       $E/Service/ExtensionCleanup.swift \
+                            $E/Service/ExtensionCatalog.swift \
+                            Tinycast/Platform/AppDisplayName.swift \
+diff --git a/Tests/ext-contract-test.swift b/Tests/ext-contract-test.swift
+new file mode 100644
+index 0000000..adb59ae
+--- /dev/null
++++ b/Tests/ext-contract-test.swift
+@@ -0,0 +1,76 @@
++import Foundation
++
++@main
++@MainActor
++struct ExtensionContractTests {
++    static var failures = 0
++
++    static func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
++        guard !condition() else { return }
++        failures += 1
++        print("FAIL: \(message)")
++    }
++
++    static func manifest(contract: String? = nil) throws -> ExtensionManifest? {
++        let metadata = contract.map { ",\"speechcast\":\($0)" } ?? ""
++        let source = """
++            {"name":"contract-example","commands":[
++                {"name":"inspect","title":"Inspect","mode":"view"},
++                {"name":"run","title":"Run","mode":"no-view"},
++                {"name":"status","title":"Status","mode":"menu-bar"}
++            ]\(metadata)}
++            """
++        guard let json = try JSONSerialization.jsonObject(with: Data(source.utf8)) as? [String: Any]
++        else { return nil }
++        return ExtensionManifest(json: json)
++    }
++
++    static func main() throws {
++        let legacy = try manifest()
++        expect(legacy != nil, "a Raycast manifest without SpeechCast metadata remains accepted")
++        expect(legacy?.speechcast == nil, "absence remains distinct from a supported contract")
++
++        let supported = try manifest(contract: #"{"schemaVersion":1,"apiVersion":1}"#)
++        expect(supported?.speechcast?.schemaVersion == 1, "the schema version survives parsing")
++        expect(supported?.speechcast?.apiVersion == 1, "the API version survives parsing")
++        expect(supported?.commands == legacy?.commands, "metadata does not change command semantics")
++        expect(supported?.supportsMacOS == true, "metadata keeps the legacy macOS default")
++
++        let integral = try manifest(contract: #"{"schemaVersion":1.0,"apiVersion":1e0}"#)
++        expect(integral?.speechcast == supported?.speechcast, "JSON numeric notation is not a version")
++
++        let invalid: [(String, String)] = [
++            ("null", "null metadata"),
++            ("true", "boolean metadata"),
++            ("[]", "array metadata"),
++            (#""1""#, "string metadata"),
++            ("{}", "missing versions"),
++            (#"{"schemaVersion":1}"#, "missing API version"),
++            (#"{"apiVersion":1}"#, "missing schema version"),
++            (#"{"schemaVersion":true,"apiVersion":1}"#, "boolean schema version"),
++            (#"{"schemaVersion":1,"apiVersion":true}"#, "boolean API version"),
++            (#"{"schemaVersion":"1","apiVersion":1}"#, "string schema version"),
++            (#"{"schemaVersion":1,"apiVersion":"1"}"#, "string API version"),
++            (#"{"schemaVersion":2,"apiVersion":1}"#, "future schema version"),
++            (#"{"schemaVersion":1,"apiVersion":2}"#, "future API version"),
++            (#"{"schemaVersion":0,"apiVersion":1}"#, "zero schema version"),
++            (#"{"schemaVersion":1,"apiVersion":-1}"#, "negative API version"),
++            (#"{"schemaVersion":1.5,"apiVersion":1}"#, "fractional schema version"),
++            (#"{"schemaVersion":1,"apiVersion":1.5}"#, "fractional API version"),
++            (#"{"schemaVersion":1,"apiVersion":99999999999999999999}"#, "oversized API version"),
++            (#"{"schemaVersion":1,"apiVersion":1,"permissions":[]}"#, "unimplemented permissions"),
++            (#"{"schemaVersion":1,"apiVersion":1,"typo":1}"#, "unknown key")
++        ]
++        for (source, description) in invalid {
++            let parsed = try manifest(contract: source)
++            expect(parsed == nil, "reject \(description) without legacy fallback")
++        }
++
++        expect(
++            ExtensionManifest(json: ["name": "empty", "speechcast": ["schemaVersion": 1, "apiVersion": 1]])
++                == nil,
++            "a valid contract does not make an empty package executable")
++        print("Extension contract checks: \(failures) failures")
++        if failures != 0 { exit(1) }
++    }
++}
+diff --git a/Tinycast/Features/Extensions/Model/ExtensionManifest.swift b/Tinycast/Features/Extensions/Model/ExtensionManifest.swift
+index d74b308..2023dbc 100644
+--- a/Tinycast/Features/Extensions/Model/ExtensionManifest.swift
++++ b/Tinycast/Features/Extensions/Model/ExtensionManifest.swift
+@@ -192,6 +192,28 @@ struct ExtensionCommand: Sendable, Hashable, Identifiable {
+ 
+ /// A Raycast extension's `package.json`, reduced to what Tinycast uses.
+ struct ExtensionManifest: Sendable, Hashable {
++    struct SpeechCastContract: Sendable, Hashable {
++        let schemaVersion: Int
++        let apiVersion: Int
++
++        init?(json: Any) {
++            guard let values = json as? [String: Any],
++                Set(values.keys) == ["schemaVersion", "apiVersion"],
++                let schemaVersion = Self.version(values["schemaVersion"]),
++                let apiVersion = Self.version(values["apiVersion"])
++            else { return nil }
++            self.schemaVersion = schemaVersion
++            self.apiVersion = apiVersion
++        }
++
++        private static func version(_ value: Any?) -> Int? {
++            guard let number = value as? NSNumber,
++                CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue == 1
++            else { return nil }
++            return 1
++        }
++    }
++
+     let name: String
+     let title: String
+     let description: String
+@@ -201,6 +223,7 @@ struct ExtensionManifest: Sendable, Hashable {
+     let icon: String?
+     let categories: [String]
+     let platforms: [String]?
++    let speechcast: SpeechCastContract?
+     let commands: [ExtensionCommand]
+     let preferences: [ExtensionPreferenceSchema]
+ 
+@@ -240,6 +263,12 @@ struct ExtensionManifest: Sendable, Hashable {
+ 
+     init?(json: [String: Any]) {
+         guard let name = json["name"] as? String else { return nil }
++        if let contract = json["speechcast"] {
++            guard let parsed = SpeechCastContract(json: contract) else { return nil }
++            speechcast = parsed
++        } else {
++            speechcast = nil
++        }
+         let commands = (json["commands"] as? [Any] ?? []).compactMap(ExtensionCommand.init(json:))
+         guard !commands.isEmpty else { return nil }
+         self.name = name
+diff --git a/docs/features/extensions.md b/docs/features/extensions.md
+index 4e2b23f..5237795 100644
+--- a/docs/features/extensions.md
++++ b/docs/features/extensions.md
+@@ -6,6 +6,7 @@ produces, rendered natively into the palette. No Electron, no browser, no Node.j
+ - [How it works](#how-it-works) · [The JS runtime](#the-js-runtime) ·
+   [The Swift host](#the-swift-host) · [Rendering](#rendering)
+ - [Turning it on](#turning-it-on) · [Installing extensions](#installing-extensions) ·
++  [SpeechCast package contract](#speechcast-package-contract) ·
+   [Installing from GitHub](#installing-from-github) · [Updates](#updates) · [Shortcuts](#shortcuts) · [Aliases](#aliases) · [Deeplinks](#deeplinks) ·
+   [What's supported](#whats-supported) ·
+   [What isn't](#what-isnt-supported-yet) · [Working on the runtime](#working-on-the-runtime)
+@@ -491,6 +492,42 @@ third-party packages external and ship them, pre-built CommonJS, under `node_mod
+ runtime resolves those from the command's directory, never above the extension's own folder, so
+ they must survive the install. A build that inlined everything simply has no such folder.
+ 
++## SpeechCast package contract
++
++Packages from the separate `SpeechCast-Extensions` repository keep the existing Raycast layout and
++may opt in to a versioned SpeechCast contract in `package.json`:
++
++```json
++{
++  "speechcast": {
++    "schemaVersion": 1,
++    "apiVersion": 1
++  }
++}
++```
++
++The example is a fragment; `name`, `commands` and the built CommonJS command files are still required.
++`schemaVersion` identifies the metadata shape. `apiVersion` identifies the SpeechCast host contract
++generation, not an `@raycast/api` package version or a claim that every Raycast API is implemented.
++Generation 1 uses the supported surface documented below, including its existing limitations.
++
++`ExtensionManifest` accepts only these two keys and version 1 for each. JSON numbers `1`, `1.0` and
++`1e0` have the same meaning; booleans, strings, fractions and other numbers do not. A missing
++`speechcast` key preserves existing Raycast import behavior. A present but invalid or unsupported
++contract rejects the manifest, so it cannot silently fall back to the unversioned path. Catalog
++install, import and scan already use this parser; install reports the existing invalid-manifest
++error, and scan skips an invalid package. Rich compatibility diagnostics remain a later UI change.
++
++This contract does not grant or restrict permissions. Both forms run with the existing extension
++trust model: opt-in third-party code, broad host filesystem/process APIs, and the app's available OS
++access. A JavaScript context is not an OS sandbox. In particular, adding a `permissions` key to this
++v1 object is rejected rather than implying enforcement that does not exist.
++
++No remote catalog or new updater is enabled by this field. Add a built folder through the existing
++installation path. Package release versions remain distinct from these two contract versions.
++The repository boundary and staged migration are specified in
++[the extension refactoring plan](../refactoring/extensions.md).
++
+ ## Installing from GitHub
+ 
+ The panel takes `owner/repo`, a clone URL, or the `/tree/<ref>/<path>` link a browser copies from an
+diff --git a/docs/refactoring/extensions.md b/docs/refactoring/extensions.md
+new file mode 100644
+index 0000000..8e0cf53
+--- /dev/null
++++ b/docs/refactoring/extensions.md
+@@ -0,0 +1,152 @@
++# SpeechCast extension boundary
++
++Status: staged refactoring proposal with a small executable first step. The initial patch was
++prepared against SpeechCast commit `606e1357357961edabccbf0470e22d339a1b77e4`.
++
++## What this step changes
++
++`ExtensionManifest` recognizes an optional, strict `speechcast` object in the existing `package.json`.
++The parser is on the current installation and discovery paths. The standalone `ext-contract-test`
++harness compiles that production source and checks both versioned and unversioned packages.
++The separate `SpeechCast-Extensions` starter supplies the matching package schema, build tooling
++and a source example. No extension runtime is replaced.
++
++The root patch also carries the same source, test and documentation changes in
++`.1tuz/patches/0025-extension-contract.patch`. The fork-sync workflow reconstructs the fork from
++upstream plus that queue; a source-only change would otherwise disappear on a later sync.
++Keep the queue patch aligned whenever changing this contract, and verify the whole queue against
++the recorded upstream before publishing. Never apply the queue patch a second time to the fork
++tree that already contains it.
++
++This step is not a performance optimization, process sandbox, extension store, or a completed
++AppCore refactor. No measurements of the running macOS application accompany it.
++
++## Responsibility split
++
++| Repository | Owns |
++| --- | --- |
++| `SpeechCast` | Native launcher and voice integration; settings and consent; hotkeys and window lifecycle; SwiftUI rendering; JavaScriptCore host; host capabilities; MCP/provider transport and trust |
++| `SpeechCast-Extensions` | TypeScript extension sources; build and validation tooling; package examples; release metadata; extension-specific tests and documentation |
++| `SpeechRuntime` | Existing speech recognition service and its lifecycle; not moved by this work |
++
++Swift remains the language for native host capabilities and lifecycle. TypeScript compiles to
++CommonJS for extension commands and to WebExtension bundles for a browser companion. Node is a
++development/build dependency for these packages, not a newly required SpeechCast execution runtime.
++An external MCP server may have its own runtime dependency; document that separately.
++
++Do not introduce another SDK that duplicates `@raycast/api`. Start with the subset the host already
++implements. Add a SpeechCast-specific API only for a concrete capability that cannot use the existing
++surface, then version its schema and test its native implementation and bundle together.
++
++## Version contract
++
++The only accepted v1 metadata object is:
++
++```json
++{"schemaVersion": 1, "apiVersion": 1}
++```
++
++- Absence means the existing unversioned Raycast path, with unchanged behavior.
++- Presence requires both numeric versions and no additional keys. `null` is not absence.
++- Unsupported metadata fails parsing, including an unknown field such as `permissions`.
++- `schemaVersion` is the object format. `apiVersion` is the supported host generation, not the npm
++  version of `@raycast/api`. It does not assert complete Raycast compatibility.
++- A package's release `version` is separate. The native updater does not acquire semantic-version
++  or registry behavior from this patch.
++
++The native parser and repository validator must be changed together for a future generation.
++Retain fixtures with missing metadata, valid metadata, booleans, fractions, missing fields, unknown
++fields and unsupported generations. JSON Schema treats `1.0` and `1e0` as the integer value 1; the
++native parser follows that same rule.
++
++## Subsequent changes, each independently reviewable
++
++### 1. Establish measurements and narrow ownership boundaries
++
++Use the recipes in `docs/testing.md`. Record launch time, idle RSS, palette latency and memory after
++closing a view/no-view/menu-bar extension. Compare the same build configuration, package set and
++workload. Measure with optional features disabled and enabled. A long `AppCore.swift` does not by
++itself prove excessive memory use.
++
++Keep `AppCore` as the composition/lifetime root. Extract policy only where a current responsibility
++is mixed with another and a real caller can consume a narrower interface. In particular, separate
++extension installation/update decisions from running a foreground session without creating a second
++owner, parallel singleton or unused dependency-injection framework. Preserve lazy startup and
++existing feature-off teardown.
++
++Do not move native clipboard, hotkeys, dictation, window management, calendar or calculator into
++JavaScript merely to shorten the core. External service integrations and optional tools are the
++first candidates for separate packages. Preserve command IDs, aliases, hotkeys, preferences,
++channel isolation and the upstream patch queue.
++
++### 2. Make package installation and updates transactional
++
++Use the existing `ExtensionCatalog` and version/update surfaces. Stage a new package outside the
++active install, validate manifest and all required bundles, reject unsafe paths and links, verify
++release integrity, then atomically replace the active package with a rollback path. Stop an affected
++session through its existing owner. Preserve extension data and command identities.
++
++The current installer removes the destination before copying files and can fail partway through;
++repair this before introducing automatic updates from a second catalog. A checksum detects changed
++bytes; it does not establish publisher trust by itself. Define the release signing/trust model
++separately, including who may publish the registry. An empty starter registry is not a working
++installation source.
++
++### 3. Design enforceable capabilities and execution isolation
++
++The current filesystem and process shims are broad. A declaration in JSON alone cannot restrict
++them. Introduce an immutable extension identity and approved scope at each host-call boundary,
++including synchronous Node shims, network access, clipboard, credentials and process execution.
++Keep grants local to this app channel and outside imported settings/backups.
++
++A helper process improves crash containment and makes a stuck synchronous JavaScript task
++terminable. It is only a security boundary when combined with OS restrictions and brokered access;
++an unsandboxed helper with arbitrary shell execution bypasses narrower API permissions. Specify
++which existing packages require an explicitly trusted mode before changing default compatibility.
++Do not label this starter's packages sandboxed.
++
++### 4. Consolidate command exposure using existing catalogs
++
++Start from `Launcher/Model/CommandCatalog.swift`, `CommandID`, `SettingsTab.ownedCommands`, the voice
++command catalog/router and the extension manager's existing entries. Identify duplicated metadata
++and dispatch paths before introducing a shared descriptor. Do not add a competing global registry.
++
++Model actual action inputs, outputs, cancellation and permission requirements where shared
++execution is needed. Launcher, voice and AI can then consume the same suitable action metadata.
++A command that opens a view is not automatically a callable AI tool; opt tools in explicitly.
++Keep the existing MCP manager, OAuth manager, provider routing and per-chat trust selection.
++
++### 5. Add the browser companion as one complete feature
++
++Treat browser code, its long-lived connection, the launcher view and MCP tools as separate parts of
++one feature. A short-lived JavaScriptCore command context cannot own the browser connection across
++palette closes. Reuse the existing MCP client for an initial external browser server evaluation;
++do not rewrite a working server into Swift solely for language uniformity.
++
++Evaluate Firefox and Chromium separately, including the intended Zen profile. A Chromium debugger
++implementation is not portable to Firefox by renaming its manifest. For a native connection, define
++pairing/authentication, session and tab ownership, request bounds, cancellation and disconnect
++behavior. Treat page content as data, not instructions that can authorize additional capabilities.
++Read-only context retrieval should precede actions with side effects.
++
++## Validation before merging this starter
++
++On macOS with the repository's Xcode/toolchain:
++
++```sh
++./Scripts/run-tests.sh ext-contract-test
++./Scripts/run-tests.sh ext-refresh-test
++./Scripts/run-tests.sh ext-test
++./Scripts/run-tests.sh
++./Scripts/lint.sh
++xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Debug CODE_SIGNING_ALLOWED=NO build
++```
++
++Import the built example using Add from folder, run it, close it, and confirm existing Raycast
++packages and aliases still work. Try invalid metadata and confirm it cannot be installed. Disable
++extensions and confirm no commands, menu items or background work remain. A JavaScript build check
++on Linux is not a substitute for this native smoke test.
++
++Replay the fork patch queue on the recorded upstream in a disposable checkout and run the fork gate
++before publication. Static patch application against the current fork verifies the patch's starting
++point, not a future upstream merge or native compilation.
+diff --git a/docs/testing.md b/docs/testing.md
+index 494b1f3..203169f 100644
+--- a/docs/testing.md
++++ b/docs/testing.md
+@@ -165,6 +165,7 @@ If a change touches anything in the right column, the harness on the left is man
+ | `notes-editor-test` | the Notes editor, rendered and literal, with real TextKit 2 and AppKit editing objects: styling, reveal, layout fragments, keys, chords, checkboxes and links |
+ | `raycast-test` | `Backup/Service/RaycastDecoder.swift`, `Scrypt.swift`, `Platform/Compression/Zlib.swift`, `Clipboard/Model/RaycastClipboardImport.swift` and import-time clipboard retention |
+ | `symbols-test` | `Extensions/Service/SymbolCatalog.swift`, against this machine's CoreGlyphs |
++| `ext-contract-test` | `Extensions/Model/ExtensionManifest.swift` — legacy imports, supported SpeechCast metadata, strict version types and rejection without legacy fallback |
+ | `ext-store-test` | `Extensions/Model/` — GitHub source parsing and URLs, the store and Git tree parsers |
+ | `ext-refresh-test` | `Extensions/Model/ExtensionRefreshPolicy.swift` — interval parsing, due dates, backoff, subtitle fallback, indicator state, Refresh Now refusals |
+ | `ext-version-test` | `Extensions/Service/ExtensionVersionStore.swift` — what an update check reports, adopts and forgets |

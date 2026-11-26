@@ -43,6 +43,12 @@ for patch in .1tuz/patches/*.patch; do
   elif [ "$name" = "0024-raycast-voice-shared-window-manager.patch" ]; then
     # Based on the fork voice parser and window coordinates, not a standalone upstream tree.
     apply_args=(--whitespace=nowarn)
+  elif [ "$name" = "0025-extension-contract.patch" ]; then
+    # This extends the fork's extension parser and harness list after the preceding queue.
+    apply_args=(--whitespace=nowarn)
+  elif [ "$name" = "0026-window-managers-atomic-install.patch" ]; then
+    # Applies on top of the current fork and extension contract.
+    apply_args=(--whitespace=nowarn)
   fi
   if ! git apply "${apply_args[@]}" "$patch"; then
     failed="$name"

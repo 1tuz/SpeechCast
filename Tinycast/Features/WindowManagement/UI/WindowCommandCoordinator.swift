@@ -3,7 +3,7 @@ import Darwin
 
 /// Select the same window-manager process that StableBar uses, not a second tiler.
 enum SharedWindowManagerSelection: String, CaseIterable, Identifiable {
-    case automatic, native, aerospace, yabai
+    case automatic, native, aerospace, yabai, rift, omniwm, kiwidesk
 
     static let defaultsKey = "speechcast.windowManager.provider"
     var id: String { rawValue }
@@ -13,98 +13,76 @@ enum SharedWindowManagerSelection: String, CaseIterable, Identifiable {
         case .native: "SpeechCast (Accessibility)"
         case .aerospace: "AeroSpace"
         case .yabai: "yabai"
+        case .rift: "Rift"
+        case .omniwm: "OmniWM"
+        case .kiwidesk: "KiwiDesk"
         }
     }
 }
 
-/// Small, allowlisted CLI adapter. StableBar continues to own only its UI; both
-/// apps talk to the *same running* AeroSpace/yabai process and its workspaces.
-@MainActor
-enum SharedWindowManagerBridge {
-    enum Backend: String { case aerospace, yabai }
-    enum Resolution {
+/// The CLI executable names deliberately differ from workspaceSource for Rift and OmniWM.
+enum SharedWindowManagerBackend: String, CaseIterable, Sendable {
+    case aerospace, yabai, rift, omniwm, kiwidesk
+
+    var cliName: String {
+        switch self {
+        case .rift: "rift-cli"
+        case .omniwm: "omniwmctl"
+        default: rawValue
+        }
+    }
+
+    var appExecutableName: String? {
+        switch self {
+        case .aerospace: "AeroSpace"
+        case .omniwm: "OmniWM"
+        case .kiwidesk: "KiwiDesk"
+        case .yabai, .rift: nil
+        }
+    }
+
+    var probe: [String] {
+        switch self {
+        case .aerospace: ["list-workspaces", "--focused"]
+        case .yabai: ["-m", "query", "--spaces", "--space"]
+        case .rift: ["query", "workspaces"]
+        case .omniwm: ["ping"]
+        case .kiwidesk: ["get_state"]
+        }
+    }
+
+    /// Only the original two backends have a verified focused-window float query here.
+    var permitsNativeFloatingGeometry: Bool { self == .aerospace || self == .yabai }
+}
+
+enum SharedWindowManagerPolicy {
+    typealias Backend = SharedWindowManagerBackend
+
+    enum Choice: Equatable {
         case native
-        case external(Backend, executable: String)
+        case external(Backend)
         case unavailable(String)
     }
 
-    static func resolve() -> Resolution {
-        let selected = SharedWindowManagerSelection(
-            rawValue: UserDefaults.standard.string(forKey: SharedWindowManagerSelection.defaultsKey) ?? "automatic"
-        ) ?? .automatic
-        switch selected {
-        case .native: return .native
-        case .aerospace: return resolve(.aerospace)
-        case .yabai: return resolve(.yabai)
-        case .automatic:
-            // StableBar's explicit workspaceSource takes precedence over an incidental
-            // background window manager. Its other sources are not emulated here.
-            if let configured = stableBarSource() {
-                switch configured {
-                case "aerospace": return resolve(.aerospace)
-                case "yabai": return resolve(.yabai)
-                case "spaces": return .native
-                default: return .unavailable("StableBar uses \(configured). Select a compatible manager or native mode.")
-                }
+    static func choose(
+        _ selection: SharedWindowManagerSelection, stableBarSource: String?, running: Set<Backend>
+    ) -> Choice {
+        if selection == .native { return .native }
+        if selection != .automatic, let backend = Backend(rawValue: selection.rawValue) {
+            return .external(backend)
+        }
+        if let source = stableBarSource?.lowercased(), source != "spaces" {
+            guard let backend = Backend(rawValue: source) else {
+                return .unavailable("StableBar uses \(source). Choose a window manager explicitly.")
             }
-            if isRunning(.aerospace) { return resolve(.aerospace) }
-            if isRunning(.yabai) { return resolve(.yabai) }
-            return .native
+            return .external(backend)
         }
-    }
-
-    private static func resolve(_ backend: Backend) -> Resolution {
-        guard isRunning(backend) else {
-            return .unavailable("\(backend.rawValue) is not running. Window geometry was not changed.")
+        // Spaces is a bar display source, not evidence that no tiler owns the windows.
+        guard running.count <= 1 else {
+            return .unavailable("Multiple window managers are running. Choose one explicitly.")
         }
-        guard let executable = executable(for: backend) else {
-            return .unavailable("\(backend.rawValue) CLI was not found. Check your PATH or Homebrew installation.")
-        }
-        return .external(backend, executable: executable)
-    }
-
-    private static func stableBarSource() -> String? {
-        let file = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/stablebar/config.json")
-        guard let data = try? Data(contentsOf: file),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
-        return object["workspaceSource"] as? String
-    }
-
-    private static func isRunning(_ backend: Backend) -> Bool {
-        switch backend {
-        case .aerospace:
-            return !NSRunningApplication.runningApplications(withBundleIdentifier: "bobko.aerospace").isEmpty
-        case .yabai:
-            let capacity = proc_listallpids(nil, 0)
-            guard capacity > 0 else { return false }
-            var pids = [pid_t](repeating: 0, count: Int(capacity) + 64)
-            let count = pids.withUnsafeMutableBytes { proc_listallpids($0.baseAddress, Int32($0.count)) }
-            let user = getuid()
-            let size = Int32(MemoryLayout<proc_bsdshortinfo>.size)
-            return pids.prefix(Int(max(count, 0))).contains { pid in
-                var info = proc_bsdshortinfo()
-                guard pid > 0,
-                      proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, size) == size,
-                      info.pbsi_uid == user else { return false }
-                return withUnsafeBytes(of: info.pbsi_comm) {
-                    String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
-                } == "yabai"
-            }
-        }
-    }
-
-    private static func executable(for backend: Backend) -> String? {
-        let name = backend.rawValue
-        let path = (ProcessInfo.processInfo.environment["PATH"] ?? "")
-            .split(separator: ":").map(String.init)
-        let dirs = path + ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
-        for directory in dirs {
-            let candidate = URL(fileURLWithPath: directory).appendingPathComponent(name).path
-            if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
-        }
-        return nil
+        if let backend = running.first { return .external(backend) }
+        return .native
     }
 
     /// Only commands that a tiler owns. In particular, arbitrary half/third
@@ -144,6 +122,47 @@ enum SharedWindowManagerBridge {
             case .closeWindow: return ["-m", "window", "--close"]
             default: return nil
             }
+        case .rift:
+            switch id {
+            case .previousSpace: return ["execute", "workspace", "prev"]
+            case .nextSpace: return ["execute", "workspace", "next"]
+            case .moveLeft: return ["execute", "layout", "move-node", "left"]
+            case .moveRight: return ["execute", "layout", "move-node", "right"]
+            case .moveUp: return ["execute", "layout", "move-node", "up"]
+            case .moveDown: return ["execute", "layout", "move-node", "down"]
+            case .makeLarger: return ["execute", "window", "resize-grow", "--orientation", "smart"]
+            case .makeSmaller: return ["execute", "window", "resize-shrink", "--orientation", "smart"]
+            case .closeWindow: return ["execute", "window", "close"]
+            default: return nil
+            }
+        case .omniwm:
+            switch id {
+            case .previousSpace: return ["command", "switch-workspace", "prev"]
+            case .nextSpace: return ["command", "switch-workspace", "next"]
+            case .moveLeft: return ["command", "move", "left"]
+            case .moveRight: return ["command", "move", "right"]
+            case .moveUp: return ["command", "move", "up"]
+            case .moveDown: return ["command", "move", "down"]
+            // Dwindle only; Niri has a different, span-based sizing API.
+            case .makeLarger: return ["command", "resize-focused", "grow"]
+            case .makeSmaller: return ["command", "resize-focused", "shrink"]
+            case .toggleFullscreen: return ["command", "toggle-native-fullscreen"]
+            case .closeWindow: return ["command", "close-focused-window"]
+            default: return nil
+            }
+        case .kiwidesk:
+            switch id {
+            case .previousSpace: return ["focus_space_previous"]
+            case .nextSpace: return ["focus_space_next"]
+            case .moveLeft: return ["swap", "left"]
+            case .moveRight: return ["swap", "right"]
+            case .moveUp: return ["swap", "up"]
+            case .moveDown: return ["swap", "down"]
+            case .makeLarger: return ["resize", "x", "50"]
+            case .makeSmaller: return ["resize", "x", "-50"]
+            case .closeWindow: return ["close_window"]
+            default: return nil
+            }
         }
     }
 
@@ -154,7 +173,138 @@ enum SharedWindowManagerBridge {
             return moveWindow ? ["move-node-to-workspace", "--", name] : ["workspace", "--", name]
         case .yabai:
             return moveWindow ? ["-m", "window", "--space", name] : ["-m", "space", "--focus", name]
+        case .rift:
+            // Rift indexes workspaces from zero; SpeechCast numbers them from one.
+            return ["execute", "workspace", moveWindow ? "move-window" : "switch", String(index - 1)]
+        case .omniwm:
+            return ["command", moveWindow ? "move-to-workspace" : "switch-workspace", name]
+        case .kiwidesk:
+            return [moveWindow ? "move_to_space" : "focus_space", name]
         }
+    }
+
+}
+
+/// Small, allowlisted CLI adapter. StableBar owns its UI; both apps talk to the
+/// same running window manager. Never fall back to AX after an external CLI fails.
+@MainActor
+enum SharedWindowManagerBridge {
+    typealias Backend = SharedWindowManagerBackend
+    enum Resolution {
+        case native
+        case external(Backend, executable: String)
+        case unavailable(String)
+    }
+
+    static func resolve() -> Resolution {
+        let selected = SharedWindowManagerSelection(
+            rawValue: UserDefaults.standard.string(forKey: SharedWindowManagerSelection.defaultsKey) ?? "automatic"
+        ) ?? .automatic
+        let running = Set(Backend.allCases.filter { isRunning($0) })
+        switch SharedWindowManagerPolicy.choose(selected, stableBarSource: stableBarSource(), running: running) {
+        case .native: return .native
+        case .external(let backend): return resolve(backend)
+        case .unavailable(let message): return .unavailable(message)
+        }
+    }
+
+    static func connectionStatus() async -> String {
+        switch resolve() {
+        case .native: return "Native Accessibility mode (no external manager selected)."
+        case .unavailable(let message): return message
+        case .external(let backend, let executable):
+            do {
+                _ = try await execute(backend.probe, executable: executable)
+                return "\(backend.rawValue): connected"
+            } catch {
+                return "\(backend.rawValue): \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private static func resolve(_ backend: Backend) -> Resolution {
+        guard isRunning(backend) else {
+            return .unavailable("\(backend.rawValue) is not running. Window geometry was not changed.")
+        }
+        guard let executable = executable(for: backend) else {
+            return .unavailable("\(backend.rawValue) CLI was not found. Check your PATH or Homebrew installation.")
+        }
+        return .external(backend, executable: executable)
+    }
+
+    private static func stableBarSource() -> String? {
+        let file = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/stablebar/config.json")
+        guard let data = try? Data(contentsOf: file),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return object["workspaceSource"] as? String
+    }
+
+    private static func isRunning(_ backend: Backend) -> Bool {
+        if backend == .aerospace {
+            return !NSRunningApplication.runningApplications(withBundleIdentifier: "bobko.aerospace").isEmpty
+        }
+        if let appName = backend.appExecutableName {
+            return NSWorkspace.shared.runningApplications.contains {
+                $0.executableURL?.lastPathComponent.caseInsensitiveCompare(appName) == .orderedSame
+                    && !$0.isTerminated
+            }
+        }
+        // yabai and Rift may be launched as per-user background services, without an app bundle.
+        let capacity = proc_listallpids(nil, 0)
+        guard capacity > 0 else { return false }
+        var pids = [pid_t](repeating: 0, count: Int(capacity) + 64)
+        let count = pids.withUnsafeMutableBytes { proc_listallpids($0.baseAddress, Int32($0.count)) }
+        let user = getuid()
+        let size = Int32(MemoryLayout<proc_bsdshortinfo>.size)
+        return pids.prefix(Int(max(count, 0))).contains { pid in
+            var info = proc_bsdshortinfo()
+            guard pid > 0,
+                  proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, size) == size,
+                  info.pbsi_uid == user else { return false }
+            return withUnsafeBytes(of: info.pbsi_comm) {
+                String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
+            } == backend.rawValue
+        }
+    }
+
+    private static func executable(for backend: Backend) -> String? {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser
+        let name = backend.cliName
+        // Prefer a CLI belonging to the running GUI app rather than a stale Homebrew link.
+        if let appName = backend.appExecutableName {
+            let bundledName = backend == .kiwidesk ? appName : name
+            let runningDirs = NSWorkspace.shared.runningApplications.compactMap { app -> URL? in
+                guard app.executableURL?.lastPathComponent.caseInsensitiveCompare(appName) == .orderedSame
+                else { return nil }
+                return app.executableURL?.deletingLastPathComponent()
+            }
+            for directory in runningDirs {
+                let candidate = directory.appendingPathComponent(bundledName).path
+                if fm.isExecutableFile(atPath: candidate) { return candidate }
+            }
+        }
+        let path = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+            .split(separator: ":").map(String.init).filter { $0.hasPrefix("/") }
+        let dirs = path + ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin",
+                           home.appendingPathComponent(".local/bin").path,
+                           home.appendingPathComponent("bin").path,
+                           home.appendingPathComponent(".cargo/bin").path]
+        for directory in dirs {
+            let candidate = URL(fileURLWithPath: directory).appendingPathComponent(name).path
+            if fm.isExecutableFile(atPath: candidate) { return candidate }
+        }
+        return nil
+    }
+
+    static func command(_ id: WindowCommand.ID, for backend: Backend) -> [String]? {
+        SharedWindowManagerPolicy.command(id, for: backend)
+    }
+
+    static func workspace(_ index: Int, moveWindow: Bool, backend: Backend) -> [String] {
+        SharedWindowManagerPolicy.workspace(index, moveWindow: moveWindow, backend: backend)
     }
 
     /// Only pixel-geometry commands need to ask whether AX would fight a tiler.
@@ -167,31 +317,54 @@ enum SharedWindowManagerBridge {
         }
     }
 
-    /// No shell interpolation. Reads a small result and times out a stalled CLI.
+    /// No shell interpolation. Private capture files avoid the pipe-buffer deadlock while a
+    /// manager writes a JSON response. Cancellation and timeout stop the CLI, never the manager.
     static func execute(_ args: [String], executable: String) async throws -> String {
+        try Task.checkCancellation()
+        let fm = FileManager.default
+        let directory = fm.temporaryDirectory.appendingPathComponent("speechcast-wm-\(UUID().uuidString)")
+        try fm.createDirectory(at: directory, withIntermediateDirectories: false,
+                               attributes: [.posixPermissions: 0o700])
+        defer { try? fm.removeItem(at: directory) }
+        let outURL = directory.appendingPathComponent("stdout")
+        let errURL = directory.appendingPathComponent("stderr")
+        guard fm.createFile(atPath: outURL.path, contents: nil, attributes: [.posixPermissions: 0o600]),
+              fm.createFile(atPath: errURL.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+            throw SharedWindowManagerError.message("Could not capture window manager output")
+        }
+        let stdout = try FileHandle(forWritingTo: outURL)
+        defer { try? stdout.close() }
+        let stderr = try FileHandle(forWritingTo: errURL)
+        defer { try? stderr.close() }
         let process = Process()
-        let stdout = Pipe()
-        let stderr = Pipe()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
         process.standardOutput = stdout
         process.standardError = stderr
+        process.standardInput = FileHandle.nullDevice
         try process.run()
+        defer {
+            if process.isRunning { process.terminate() }
+        }
         let deadline = ContinuousClock.now + .seconds(3)
         while process.isRunning {
             if ContinuousClock.now >= deadline {
-                process.terminate()
                 throw SharedWindowManagerError.message("Window manager CLI timed out")
             }
             try await Task.sleep(for: .milliseconds(40))
         }
-        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let error = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        guard process.terminationStatus == 0 else {
-            throw SharedWindowManagerError.message(error.trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty ? "Window manager command failed" : error)
+        try Task.checkCancellation()
+        func read(_ url: URL) throws -> String {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let data = try handle.read(upToCount: 1_048_576) ?? Data()
+            return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard process.terminationStatus == 0 else {
+            let error = try read(errURL)
+            throw SharedWindowManagerError.message(error.isEmpty ? "Window manager command failed" : error)
+        }
+        return try read(outURL)
     }
 
     static func focusedWindowIsFloating(backend: Backend, executable: String) async throws -> Bool {
@@ -208,6 +381,10 @@ enum SharedWindowManagerBridge {
                 throw SharedWindowManagerError.message("Could not read yabai's focused window layout")
             }
             return floating
+        case .rift, .omniwm, .kiwidesk:
+            // Unknown is deliberately NOT proof that native frame writes are safe. Commands
+            // documented by these managers still work through their CLI, including resize.
+            return false
         }
     }
 }
@@ -259,7 +436,7 @@ final class WindowCommandCoordinator {
         guard settings.windowManagementEnabled, (1...20).contains(number) else { return }
         switch SharedWindowManagerBridge.resolve() {
         case .native:
-            core.showMessage("Choose AeroSpace or yabai to control numbered workspaces", tone: .neutral)
+            core.showMessage("Choose an external window manager to control numbered workspaces", tone: .neutral)
         case .unavailable(let message): core.showMessage(message, tone: .danger)
         case .external(let backend, let executable):
             if paletteCoordinator.isVisible {
@@ -321,13 +498,21 @@ final class WindowCommandCoordinator {
                     let floating = try await SharedWindowManagerBridge.focusedWindowIsFloating(
                         backend: backend, executable: executable)
                     if floating {
+                        guard self.targetStillFocused(target) else {
+                            self.core.showMessage("Window focus changed; command cancelled", tone: .neutral)
+                            return
+                        }
                         self.placeWindow(id, target: target, voiceFeedback: voiceFeedback)
                         return
                     }
                 }
+                guard self.targetStillFocused(target) else {
+                    self.core.showMessage("Window focus changed; command cancelled", tone: .neutral)
+                    return
+                }
                 guard let command else {
                     self.core.showMessage(
-                        "This geometry action is unavailable for a tiled window. Use the manager's layout.",
+                        "This action has no safe mapping for the selected manager or current window layout.",
                         tone: .neutral)
                     return
                 }
@@ -353,7 +538,7 @@ final class WindowCommandCoordinator {
     }
 
     /// Custom frames still work for floating windows; a managed tile is not resized behind
-    /// AeroSpace/yabai's back, since that would fight its own layout on every refresh.
+    /// the selected manager's back, since that would fight its layout on every refresh.
     func runCustomWindowSize(id: UUID) {
         guard settings.windowManagementEnabled, let size = customSizes.size(id: id) else { return }
         switch SharedWindowManagerBridge.resolve() {
@@ -368,12 +553,28 @@ final class WindowCommandCoordinator {
                 do {
                     guard try await SharedWindowManagerBridge.focusedWindowIsFloating(
                         backend: backend, executable: executable) else {
-                        self.core.showMessage("Custom sizing is available only for floating windows", tone: .neutral)
+                        self.core.showMessage(
+                            "Custom pixel sizing requires a confirmed floating window in AeroSpace or yabai",
+                            tone: .neutral)
+                        return
+                    }
+                    guard self.targetStillFocused(target) else {
+                        self.core.showMessage("Window focus changed; command cancelled", tone: .neutral)
                         return
                     }
                     self.windowMover.perform(size, target: target, gap: CGFloat(self.settings.windowGap))
                 } catch { self.core.showMessage(error.localizedDescription, tone: .danger) }
             }
+        }
+    }
+
+    private func targetStillFocused(_ target: WindowTarget?) -> Bool {
+        switch (target, WindowTarget.current()) {
+        case (.some(.external(let expected)), .some(.external(let current))):
+            return expected.processIdentifier == current.processIdentifier
+        case (.some(.own(let expected)), .some(.own(let current))):
+            return expected === current
+        default: return false
         }
     }
 

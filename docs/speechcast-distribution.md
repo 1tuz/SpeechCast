@@ -26,6 +26,8 @@ gh secret set SPEECHCAST_SIGNING_P12_PASSWORD --repo 1tuz/SpeechCast < build/sig
 | `SPEECHCAST_SIGNING_P12_BASE64` | Base64 of the existing password-encrypted `.p12`, including its private key |
 | `SPEECHCAST_SIGNING_P12_PASSWORD` | The export password for that exact `.p12` |
 
+The release workflow accepts the former `SIGNING_P12_BASE64` and `SIGNING_P12_PASSWORD` names during migration. Move their values to the canonical names, then remove the former secrets.
+
 The workflow's repository `GITHUB_TOKEN` handles release publication. No Apple secrets are required. Former `DEVELOPER_ID_APPLICATION_*`, `APPLE_TEAM_ID` and `APPSTORE_*` secrets are unused and can be removed after migration. Do not regenerate the certificate to configure a missing secret.
 
 For a future explicitly approved signing generation, use the one-time `Scripts/create-signing-certificate.sh` generator. Review its usage and update all public pins together. That is a certificate migration, not routine release preparation. A new certificate cannot update apps that trust only the previous pin.

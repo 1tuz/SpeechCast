@@ -192,6 +192,28 @@ struct ExtensionCommand: Sendable, Hashable, Identifiable {
 
 /// A Raycast extension's `package.json`, reduced to what Tinycast uses.
 struct ExtensionManifest: Sendable, Hashable {
+    struct SpeechCastContract: Sendable, Hashable {
+        let schemaVersion: Int
+        let apiVersion: Int
+
+        init?(json: Any) {
+            guard let values = json as? [String: Any],
+                Set(values.keys) == ["schemaVersion", "apiVersion"],
+                let schemaVersion = Self.version(values["schemaVersion"]),
+                let apiVersion = Self.version(values["apiVersion"])
+            else { return nil }
+            self.schemaVersion = schemaVersion
+            self.apiVersion = apiVersion
+        }
+
+        private static func version(_ value: Any?) -> Int? {
+            guard let number = value as? NSNumber,
+                CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue == 1
+            else { return nil }
+            return 1
+        }
+    }
+
     let name: String
     let title: String
     let description: String
@@ -201,6 +223,7 @@ struct ExtensionManifest: Sendable, Hashable {
     let icon: String?
     let categories: [String]
     let platforms: [String]?
+    let speechcast: SpeechCastContract?
     let commands: [ExtensionCommand]
     let preferences: [ExtensionPreferenceSchema]
 
@@ -240,6 +263,12 @@ struct ExtensionManifest: Sendable, Hashable {
 
     init?(json: [String: Any]) {
         guard let name = json["name"] as? String else { return nil }
+        if let contract = json["speechcast"] {
+            guard let parsed = SpeechCastContract(json: contract) else { return nil }
+            speechcast = parsed
+        } else {
+            speechcast = nil
+        }
         let commands = (json["commands"] as? [Any] ?? []).compactMap(ExtensionCommand.init(json:))
         guard !commands.isEmpty else { return nil }
         self.name = name

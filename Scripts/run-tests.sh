@@ -687,6 +687,10 @@ run backup-archive-test   Tinycast/Platform/AppPaths.swift \
                            Tinycast/Features/Backup/Service/BackupStaging.swift
 E=Tinycast/Features/Extensions
 run symbols-test           $E/Service/SymbolCatalog.swift
+run ext-contract-test      $E/Model/ExtensionManifest.swift \
+                           $E/Model/ExtensionRefreshPolicy.swift \
+                           $E/Model/ExtensionRefreshState.swift \
+                           Tinycast/Platform/AppDisplayName.swift
 run ext-cleanup-test       $E/Service/ExtensionCleanup.swift \
                            $E/Service/ExtensionCatalog.swift \
                            Tinycast/Platform/AppDisplayName.swift \

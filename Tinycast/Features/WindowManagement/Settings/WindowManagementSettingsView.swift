@@ -7,6 +7,8 @@ struct WindowManagementSettingsView: View {
     @State private var pendingDeletion: WindowLayout?
     @State private var customSizeEdit: CustomWindowSizeEditRequest?
     @State private var chosenPreset: WindowShortcutPreset?
+    @State private var managerStatus = ""
+    @State private var managerCheck = 0
     @AppStorage(SharedWindowManagerSelection.defaultsKey)
     private var sharedManagerMode = SharedWindowManagerSelection.automatic.rawValue
 
@@ -39,6 +41,12 @@ struct WindowManagementSettingsView: View {
         }
         .formStyle(.grouped)
         .settingsScrollTarget(.windowManagement)
+        .task(id: "\(sharedManagerMode):\(managerCheck)") {
+            managerStatus = "Checking window manager…"
+            let status = await SharedWindowManagerBridge.connectionStatus()
+            guard !Task.isCancelled else { return }
+            managerStatus = status
+        }
         .onChange(of: sharedManagerMode) { _, _ in
             guard case .native = SharedWindowManagerBridge.resolve() else {
                 core.windowLayoutCoordinator.suspendRunsForSharedManager()
@@ -76,9 +84,16 @@ struct WindowManagementSettingsView: View {
                     Text(manager.title).tag(manager.rawValue)
                 }
             }
-            Text("Automatic follows StableBar's configured AeroSpace or yabai workspace source. "
-                 + "Tiled windows are changed through that manager; custom pixel layouts and Rooms "
-                 + "are limited to native mode. Floating windows keep SpeechCast sizing.")
+            LabeledContent("Connection") {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(managerStatus).font(.caption).foregroundStyle(.secondary)
+                    Button("Check again") { managerCheck += 1 }
+                }
+            }
+            Text("Automatic follows a configured StableBar manager, or detects a single running tiler. "
+                 + "Rooms and custom layouts require native mode. Native pixel sizing in external mode "
+                 + "is available only for verified floating windows in AeroSpace and yabai. "
+                 + "Assign a shortcut to only one app; SpeechCast does not change external bindings.")
                 .font(.caption).foregroundStyle(.secondary)
 
             Picker(selection: $settings.windowCycle) {

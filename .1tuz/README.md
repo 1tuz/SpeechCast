@@ -18,6 +18,8 @@ Everything that makes this fork differ from [abue-ammar/tinycast](https://github
 | `patches/0022-focus-sessions.patch` | Local Focus sessions: profiles, soft app and browser-tab blocking, menu bar and HUD timer, deterministic voice commands |
 | `patches/0023-legibility-and-messenger-links.patch` | Restores glass legibility, fixes clipboard/text-area/AI accessibility handling, adds snippet copy/pin preferences, and expands documented meeting and messenger links |
 | `patches/0024-raycast-voice-shared-window-manager.patch` | Voice launch/arguments for Raycast extensions and a shared AeroSpace/yabai window backend, with tiler-safe guards |
+| `patches/0025-extension-contract.patch` | Optional versioned SpeechCast extension metadata, parser regression harness and the staged repository boundary plan |
+| `patches/0026-window-managers-atomic-install.patch` | Shared tiler adapters, connection checks, atomic package installation and focused regression tests |
 | `branding/` | The SpeechCast overlay: dock + menu bar icons and the logo. README, INSTALL, distribution guidance, `install.sh`, `build-dmg.sh` and `release-notes.sh` are canonical in the fork tree itself — the overlay never carries a second copy of them. `branding/apply.sh` reapplies the overlay idempotently after every patch queue run |
 | `apply.sh` | Applies patches, reapplies the branding overlay, removes website source and publishing workflows, rewrites release links, regenerates the XcodeGen project |
 | `gate.sh` | Guards the SpeechCast branding and pinned signing configuration, rejects paid Apple release dependencies, checks overlay drift, and runs a Release build and focused harnesses |

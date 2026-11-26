@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct InstalledExtension: Sendable, Hashable, Identifiable {
     let manifest: ExtensionManifest
@@ -178,6 +179,7 @@ enum ExtensionCatalog {
         case noBuiltCommands(String)
         case wrongPlatform(String)
         case copyFailed(String)
+        case unsafePackage(String)
 
         var errorDescription: String? {
             switch self {
@@ -197,6 +199,8 @@ enum ExtensionCatalog {
                 return String(localized: "\(name) doesn't support macOS.")
             case .copyFailed(let reason):
                 return String(localized: "Couldn't install the extension: \(reason)")
+            case .unsafePackage(let reason):
+                return String(localized: "Invalid extension package: \(reason)")
             }
         }
     }
@@ -206,48 +210,126 @@ enum ExtensionCatalog {
     static func install(
         from source: URL, in directory: URL = ExtensionCatalog.extensionsDirectory()
     ) throws -> InstalledExtension {
+        let fm = FileManager.default
+        // Reject a linked manifest before reading it. Keep existing Raycast naming and IDs.
+        try validatePayload(source.appendingPathComponent("package.json"), expectDirectory: false)
         guard let manifest = try? ExtensionManifest.load(directory: source) else {
             throw InstallError.notAnExtension(source)
         }
         guard manifest.supportsMacOS else { throw InstallError.wrongPlatform(manifest.title) }
-
-        let fm = FileManager.default
+        guard safeRelativeName(manifest.name), !manifest.name.hasPrefix("."),
+              manifest.commands.allSatisfy({ safeRelativeName($0.name) && !$0.name.contains("/") }),
+              Set(manifest.commands.map(\.name)).count == manifest.commands.count else {
+            throw InstallError.unsafePackage("Unsafe or duplicate package/command name")
+        }
+        for icon in [manifest.icon] + manifest.commands.map(\.icon) {
+            if let icon, !safeRelativeName(icon) { throw InstallError.unsafePackage("Unsafe icon path") }
+        }
         let built = manifest.commands.filter {
             fm.fileExists(atPath: source.appendingPathComponent("\($0.name).js").path)
         }
         guard !built.isEmpty else { throw InstallError.noBuiltCommands(manifest.title) }
-
+        if manifest.speechcast != nil && built.count != manifest.commands.count {
+            throw InstallError.unsafePackage("Every versioned SpeechCast command needs a built bundle")
+        }
         let destination = directory.appendingPathComponent(
             manifest.name.replacingOccurrences(of: "/", with: "-"), isDirectory: true)
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        // Hidden sibling on the same volume. scan() already ignores hidden directories.
+        let stage = directory.appendingPathComponent(".speechcast-install-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: stage, withIntermediateDirectories: false)
+        defer { try? fm.removeItem(at: stage) }
         do {
-            if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
-            try fm.createDirectory(at: destination, withIntermediateDirectories: true)
-            try fm.copyItem(
-                at: source.appendingPathComponent("package.json"),
-                to: destination.appendingPathComponent("package.json"))
-            for command in built {
-                let file = "\(command.name).js"
-                try fm.copyItem(
-                    at: source.appendingPathComponent(file),
-                    to: destination.appendingPathComponent(file))
+            func copy(_ name: String, isDirectory: Bool) throws {
+                let item = source.appendingPathComponent(name)
+                try validatePayload(item, expectDirectory: isDirectory)
+                try fm.copyItem(at: item, to: stage.appendingPathComponent(name))
+                try validatePayload(stage.appendingPathComponent(name), expectDirectory: isDirectory)
             }
-            let assets = source.appendingPathComponent("assets")
-            if fm.fileExists(atPath: assets.path) {
-                try fm.copyItem(at: assets, to: destination.appendingPathComponent("assets"))
+            try copy("package.json", isDirectory: false)
+            for command in built { try copy("\(command.name).js", isDirectory: false) }
+            for folder in ["assets", "node_modules"] {
+                let item = source.appendingPathComponent(folder)
+                // A dangling symlink must not be treated as an absent optional folder.
+                if fm.fileExists(atPath: item.path) || (try? fm.destinationOfSymbolicLink(atPath: item.path)) != nil {
+                    try copy(folder, isDirectory: true)
+                }
             }
-            let nodeModules = source.appendingPathComponent("node_modules")
-            if fm.fileExists(atPath: nodeModules.path) {
-                try fm.copyItem(
-                    at: nodeModules, to: destination.appendingPathComponent("node_modules"))
+            try restoreExecutablePermissions(in: stage)
+            let stagedManifest = try ExtensionManifest.load(directory: stage)
+            guard stagedManifest == manifest else {
+                throw InstallError.unsafePackage("Manifest changed during installation")
             }
-            try restoreExecutablePermissions(in: destination)
+
+            // Refuse to replace a different package with a colliding flattened name. A broken
+            // or linked destination is not ours to delete automatically.
+            let existing = fm.fileExists(atPath: destination.path)
+            if (try? fm.destinationOfSymbolicLink(atPath: destination.path)) != nil {
+                throw InstallError.unsafePackage("Install destination is a symbolic link")
+            }
+            if existing {
+                let old = try ExtensionManifest.load(directory: destination)
+                guard old.name == manifest.name else {
+                    throw InstallError.unsafePackage("Install destination belongs to another extension")
+                }
+            }
+            // RENAME_SWAP exchanges two directory entries atomically; even a process crash
+            // leaves one complete package at destination. On unsupported filesystems fail
+            // closed, rather than deleting the working directory and attempting a second move.
+            let flags = UInt32(existing ? RENAME_SWAP : RENAME_EXCL)
+            let result = stage.path.withCString { from in
+                destination.path.withCString { to in
+                    renameatx_np(AT_FDCWD, from, AT_FDCWD, to, flags)
+                }
+            }
+            guard result == 0 else {
+                let code = errno
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(code))
+            }
+            // After a swap, stage contains the previous package. The defer removes only that
+            // hidden directory, not the new package or extension-data/preferences.
+            return InstalledExtension(manifest: stagedManifest, directory: destination)
+        } catch let error as InstallError {
+            throw error
         } catch {
             throw InstallError.copyFailed(error.localizedDescription)
         }
+    }
 
-        // Re-read from the install location so the returned value points at the copy.
-        let installedManifest = try ExtensionManifest.load(directory: destination)
-        return InstalledExtension(manifest: installedManifest, directory: destination)
+    /// A package-relative path, never an absolute path, traversal, hidden staging name or control byte.
+    private static func safeRelativeName(_ name: String) -> Bool {
+        !name.isEmpty && !name.contains("\\") && !name.unicodeScalars.contains {
+            CharacterSet.controlCharacters.contains($0)
+        } && name.split(separator: "/", omittingEmptySubsequences: false).allSatisfy {
+            !$0.isEmpty && $0 != "." && $0 != ".."
+        }
+    }
+
+    /// This iteration accepts self-contained prebuilt payloads, not symlinks or special files.
+    /// Check both source and staged copy before restoring executable bits or swapping directories.
+    private static func validatePayload(_ item: URL, expectDirectory: Bool) throws {
+        let fm = FileManager.default
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
+        func check(_ url: URL, directory: Bool? = nil) throws {
+            let value = try url.resourceValues(forKeys: keys)
+            guard value.isSymbolicLink != true,
+                  value.isDirectory == true || value.isRegularFile == true,
+                  directory == nil || value.isDirectory == directory else {
+                throw InstallError.unsafePackage("Unsupported payload item: \(url.lastPathComponent)")
+            }
+        }
+        try check(item, directory: expectDirectory)
+        guard expectDirectory else { return }
+        var pending = [item]
+        while let directory = pending.popLast() {
+            let entries = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys))
+            for entry in entries {
+                try check(entry)
+                if try entry.resourceValues(forKeys: keys).isDirectory == true {
+                    pending.append(entry)
+                }
+            }
+        }
     }
 
     /// Both paths it owns: nothing else collects the scratch dir, and the dialog promises it goes.

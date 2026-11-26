@@ -78,13 +78,13 @@ jobs:
       # one. Nothing here prints a value; only the names of missing secrets.
       - name: Preflight required secrets
         env:
-          P12_BASE64: ${{ secrets.SPEECHCAST_SIGNING_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.SPEECHCAST_SIGNING_P12_PASSWORD }}
+          P12_BASE64: ${{ secrets.SPEECHCAST_SIGNING_P12_BASE64 || secrets.SIGNING_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.SPEECHCAST_SIGNING_P12_PASSWORD || secrets.SIGNING_P12_PASSWORD }}
         run: |
           set -euo pipefail
           MISSING=()
-          [ -n "$P12_BASE64" ] || MISSING+=("SPEECHCAST_SIGNING_P12_BASE64")
-          [ -n "$P12_PASSWORD" ] || MISSING+=("SPEECHCAST_SIGNING_P12_PASSWORD")
+          [ -n "$P12_BASE64" ] || MISSING+=("SPEECHCAST_SIGNING_P12_BASE64 or SIGNING_P12_BASE64")
+          [ -n "$P12_PASSWORD" ] || MISSING+=("SPEECHCAST_SIGNING_P12_PASSWORD or SIGNING_P12_PASSWORD")
           if [ "${#MISSING[@]}" -gt 0 ]; then
             echo "::error::Missing required secrets: ${MISSING[*]}"
             exit 1
@@ -95,8 +95,8 @@ jobs:
       # in Config/signing.conf (and therefore the installer and the updater).
       - name: Import release signing certificate
         env:
-          P12_BASE64: ${{ secrets.SPEECHCAST_SIGNING_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.SPEECHCAST_SIGNING_P12_PASSWORD }}
+          P12_BASE64: ${{ secrets.SPEECHCAST_SIGNING_P12_BASE64 || secrets.SIGNING_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.SPEECHCAST_SIGNING_P12_PASSWORD || secrets.SIGNING_P12_PASSWORD }}
         run: |
           set -euo pipefail
           KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"

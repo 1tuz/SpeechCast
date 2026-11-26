@@ -1,0 +1,2532 @@
+diff --git a/Scripts/test-extension-install-transaction.sh b/Scripts/test-extension-install-transaction.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..4335f76b41d6217a6c51543eca0934f7f9ccc16a
+--- /dev/null
++++ b/Scripts/test-extension-install-transaction.sh
+@@ -0,0 +1,11 @@
++#!/bin/bash
++set -euo pipefail
++cd "$(dirname "$0")/.."
++tmp=$(mktemp -d)
++trap 'rm -rf "$tmp"' EXIT
++E=Tinycast/Features/Extensions
++swiftc -swift-version 6 "$E/Model/ExtensionManifest.swift" \
++    "$E/Model/ExtensionRefreshPolicy.swift" "$E/Model/ExtensionRefreshState.swift" \
++    "$E/Service/ExtensionCatalog.swift" \
++    Tinycast/Platform/AppDisplayName.swift Tests/ext-install-transaction-test.swift -o "$tmp/test"
++"$tmp/test"
+diff --git a/Scripts/test-shared-window-managers.sh b/Scripts/test-shared-window-managers.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a86cbf7d0b26f3ca367eb548f3f6c1b3c801da9c
+--- /dev/null
++++ b/Scripts/test-shared-window-managers.sh
+@@ -0,0 +1,16 @@
++#!/bin/bash
++# Compile the actual portable policy and WindowCommand.ID, without AppKit or running a tiler.
++set -euo pipefail
++cd "$(dirname "$0")/.."
++tmp=$(mktemp -d)
++trap 'rm -rf "$tmp"' EXIT
++{
++    printf 'import Foundation\nstruct WindowCommand {\n'
++    awk '/^    enum ID:/ { active=1 } active {print} active && /^    }$/ {exit}' \
++        Tinycast/Features/WindowManagement/Model/WindowCommand.swift
++    printf '}\n'
++    awk '/^enum SharedWindowManagerSelection:/ {active=1} /^\/\/\/ Small, allowlisted CLI adapter\./ {exit} active {print}' \
++        Tinycast/Features/WindowManagement/UI/WindowCommandCoordinator.swift
++} > "$tmp/Policy.swift"
++swiftc -swift-version 6 "$tmp/Policy.swift" Tests/shared-window-manager-test.swift -o "$tmp/test"
++"$tmp/test"
+diff --git a/Tests/ext-install-transaction-test.swift b/Tests/ext-install-transaction-test.swift
+new file mode 100644
+index 0000000000000000000000000000000000000000..2e759d883316a3f3944af5f115c377ed42cb67e7
+--- /dev/null
++++ b/Tests/ext-install-transaction-test.swift
+@@ -0,0 +1,63 @@
++import Foundation
++
++@main
++@MainActor
++struct ExtensionInstallTransactionTests {
++    static func main() throws {
++        let fm = FileManager.default
++        let temp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        try fm.createDirectory(at: temp, withIntermediateDirectories: false)
++        defer { try? fm.removeItem(at: temp) }
++        let source = temp.appendingPathComponent("source")
++        let root = temp.appendingPathComponent("installed")
++        try fm.createDirectory(at: source, withIntermediateDirectories: false)
++        let manifest = source.appendingPathComponent("package.json")
++        let js = source.appendingPathComponent("run.js")
++        func prepare(_ name: String = "test-package", _ body: String, commands: String = "", contract: String = "") throws {
++            let content = """
++            {"name":"\(name)","commands":[{"name":"run","title":"Run","mode":"no-view"}\(commands)]\(contract)}
++            """
++            try Data(content.utf8).write(to: manifest)
++            try Data(body.utf8).write(to: js)
++        }
++        func expectFailure(_ operation: () throws -> Void) {
++            do { try operation() } catch { return }
++            fatalError("Expected installation failure")
++        }
++        try prepare("test-package", "first")
++        let installed = try ExtensionCatalog.install(from: source, in: root)
++        let installedJS = installed.directory.appendingPathComponent("run.js")
++        func verify(_ expected: String) throws {
++            let actual = try String(contentsOf: installedJS, encoding: .utf8)
++            precondition(actual == expected, "Installed extension changed unexpectedly")
++        }
++        try verify("first")
++        try prepare("test-package", "second")
++        _ = try ExtensionCatalog.install(from: source, in: root)
++        try verify("second")
++        try prepare("test-package", "bad", contract: ",\"speechcast\":{\"schemaVersion\":999}")
++        expectFailure { _ = try ExtensionCatalog.install(from: source, in: root) }
++        try verify("second")
++        try prepare(
++            "test-package", "bad",
++            commands: ", {\"name\":\"missing\",\"title\":\"Missing\",\"mode\":\"no-view\"}",
++            contract: ",\"speechcast\":{\"schemaVersion\":1,\"apiVersion\":1}")
++        expectFailure { _ = try ExtensionCatalog.install(from: source, in: root) }
++        try verify("second")
++        try prepare("test-package", "bad")
++        try fm.removeItem(at: js)
++        try fm.createSymbolicLink(at: js, withDestinationURL: installedJS)
++        expectFailure { _ = try ExtensionCatalog.install(from: source, in: root) }
++        try verify("second")
++        try fm.removeItem(at: js)
++        try prepare("test/package", "collision")
++        expectFailure { _ = try ExtensionCatalog.install(from: source, in: root) }
++        try verify("second")
++        try prepare("../escape", "bad")
++        expectFailure { _ = try ExtensionCatalog.install(from: source, in: root) }
++        try verify("second")
++        let dirs = try fm.contentsOfDirectory(atPath: root.path)
++        precondition(dirs == ["test-package"], "Unexpected staging residue: \(dirs)")
++        print("Extension install transaction: passed")
++    }
++}
+diff --git a/Tests/shared-window-manager-test.swift b/Tests/shared-window-manager-test.swift
+new file mode 100644
+index 0000000000000000000000000000000000000000..fba1904754e4d259929de3fbd34cca9439e6a087
+--- /dev/null
++++ b/Tests/shared-window-manager-test.swift
+@@ -0,0 +1,80 @@
++import Foundation
++
++@main
++struct SharedWindowManagerTests {
++    static func main() {
++        typealias Policy = SharedWindowManagerPolicy
++        typealias Backend = SharedWindowManagerBackend
++        func check(_ condition: @autoclosure () -> Bool, _ message: String) {
++            guard condition() else { fatalError(message) }
++        }
++        check(
++            Policy.choose(.native, stableBarSource: "rift", running: [.rift]) == .native,
++            "explicit native")
++        check(
++            Policy.choose(.automatic, stableBarSource: nil, running: []) == .native,
++            "no manager")
++        for backend in Backend.allCases {
++            check(
++                Policy.choose(.automatic, stableBarSource: nil, running: [backend]) == .external(backend),
++                "automatic detection")
++            check(
++                Policy.choose(.automatic, stableBarSource: "spaces", running: [backend]) == .external(backend),
++                "Spaces does not override tiler")
++            check(
++                Policy.choose(
++                    .automatic, stableBarSource: backend.rawValue, running: Set(Backend.allCases))
++                    == .external(backend),
++                "StableBar choice")
++            check(
++                Policy.choose(
++                    SharedWindowManagerSelection(rawValue: backend.rawValue)!,
++                    stableBarSource: nil, running: []) == .external(backend),
++                "explicit selection does not fall back")
++            check(
++                Policy.command(.leftHalf, for: backend) == nil,
++                "no arbitrary frame writes to tiled windows")
++            check(Policy.command(.closeWindow, for: backend) != nil, "close mapping")
++            check(
++                Policy.workspace(1, moveWindow: true, backend: backend)
++                    != Policy.workspace(1, moveWindow: false, backend: backend),
++                "switch versus move")
++        }
++        if case .unavailable = Policy.choose(.automatic, stableBarSource: nil, running: [.rift, .yabai]) {
++        } else {
++            fatalError("ambiguous managers")
++        }
++        if case .unavailable = Policy.choose(.automatic, stableBarSource: "unknown", running: []) {
++        } else {
++            fatalError("unknown source")
++        }
++        check(
++            Policy.workspace(1, moveWindow: false, backend: .rift)
++                == ["execute", "workspace", "switch", "0"],
++            "Rift zero-based switch")
++        check(
++            Policy.workspace(20, moveWindow: true, backend: .rift)
++                == ["execute", "workspace", "move-window", "19"],
++            "Rift zero-based move")
++        check(
++            Policy.command(.moveLeft, for: .rift) == ["execute", "layout", "move-node", "left"],
++            "Rift move")
++        check(
++            Policy.command(.moveRight, for: .omniwm) == ["command", "move", "right"],
++            "OmniWM move")
++        check(Policy.command(.moveUp, for: .kiwidesk) == ["swap", "up"], "KiwiDesk swap")
++        check(
++            Policy.workspace(2, moveWindow: true, backend: .aerospace)
++                == ["move-node-to-workspace", "--", "2"],
++            "AeroSpace legacy mapping")
++        check(
++            Policy.workspace(2, moveWindow: false, backend: .yabai)
++                == ["-m", "space", "--focus", "2"],
++            "yabai legacy mapping")
++        check(Backend.rift.cliName == "rift-cli" && Backend.omniwm.cliName == "omniwmctl", "actual executable names")
++        check(
++            Backend.aerospace.permitsNativeFloatingGeometry && !Backend.rift.permitsNativeFloatingGeometry,
++            "floating policy")
++        print("Shared window manager policy: passed")
++    }
++}
+diff --git a/Tinycast/Features/Extensions/Service/ExtensionCatalog.swift b/Tinycast/Features/Extensions/Service/ExtensionCatalog.swift
+index 59b6662d016c52b53bf58e36bb99ff22a44cf494..2381da98fe2b71e419868094ccd0c23279a15449 100644
+--- a/Tinycast/Features/Extensions/Service/ExtensionCatalog.swift
++++ b/Tinycast/Features/Extensions/Service/ExtensionCatalog.swift
+@@ -1,4 +1,5 @@
+ import Foundation
++import Darwin
+ 
+ struct InstalledExtension: Sendable, Hashable, Identifiable {
+     let manifest: ExtensionManifest
+@@ -178,6 +179,7 @@ enum ExtensionCatalog {
+         case noBuiltCommands(String)
+         case wrongPlatform(String)
+         case copyFailed(String)
++        case unsafePackage(String)
+ 
+         var errorDescription: String? {
+             switch self {
+@@ -197,6 +199,8 @@ enum ExtensionCatalog {
+                 return String(localized: "\(name) doesn't support macOS.")
+             case .copyFailed(let reason):
+                 return String(localized: "Couldn't install the extension: \(reason)")
++            case .unsafePackage(let reason):
++                return String(localized: "Invalid extension package: \(reason)")
+             }
+         }
+     }
+@@ -206,48 +210,126 @@ enum ExtensionCatalog {
+     static func install(
+         from source: URL, in directory: URL = ExtensionCatalog.extensionsDirectory()
+     ) throws -> InstalledExtension {
++        let fm = FileManager.default
++        // Reject a linked manifest before reading it. Keep existing Raycast naming and IDs.
++        try validatePayload(source.appendingPathComponent("package.json"), expectDirectory: false)
+         guard let manifest = try? ExtensionManifest.load(directory: source) else {
+             throw InstallError.notAnExtension(source)
+         }
+         guard manifest.supportsMacOS else { throw InstallError.wrongPlatform(manifest.title) }
+-
+-        let fm = FileManager.default
++        guard safeRelativeName(manifest.name), !manifest.name.hasPrefix("."),
++              manifest.commands.allSatisfy({ safeRelativeName($0.name) && !$0.name.contains("/") }),
++              Set(manifest.commands.map(\.name)).count == manifest.commands.count else {
++            throw InstallError.unsafePackage("Unsafe or duplicate package/command name")
++        }
++        for icon in [manifest.icon] + manifest.commands.map(\.icon) {
++            if let icon, !safeRelativeName(icon) { throw InstallError.unsafePackage("Unsafe icon path") }
++        }
+         let built = manifest.commands.filter {
+             fm.fileExists(atPath: source.appendingPathComponent("\($0.name).js").path)
+         }
+         guard !built.isEmpty else { throw InstallError.noBuiltCommands(manifest.title) }
+-
++        if manifest.speechcast != nil && built.count != manifest.commands.count {
++            throw InstallError.unsafePackage("Every versioned SpeechCast command needs a built bundle")
++        }
+         let destination = directory.appendingPathComponent(
+             manifest.name.replacingOccurrences(of: "/", with: "-"), isDirectory: true)
++        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
++        // Hidden sibling on the same volume. scan() already ignores hidden directories.
++        let stage = directory.appendingPathComponent(".speechcast-install-\(UUID().uuidString)", isDirectory: true)
++        try fm.createDirectory(at: stage, withIntermediateDirectories: false)
++        defer { try? fm.removeItem(at: stage) }
+         do {
+-            if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
+-            try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+-            try fm.copyItem(
+-                at: source.appendingPathComponent("package.json"),
+-                to: destination.appendingPathComponent("package.json"))
+-            for command in built {
+-                let file = "\(command.name).js"
+-                try fm.copyItem(
+-                    at: source.appendingPathComponent(file),
+-                    to: destination.appendingPathComponent(file))
++            func copy(_ name: String, isDirectory: Bool) throws {
++                let item = source.appendingPathComponent(name)
++                try validatePayload(item, expectDirectory: isDirectory)
++                try fm.copyItem(at: item, to: stage.appendingPathComponent(name))
++                try validatePayload(stage.appendingPathComponent(name), expectDirectory: isDirectory)
+             }
+-            let assets = source.appendingPathComponent("assets")
+-            if fm.fileExists(atPath: assets.path) {
+-                try fm.copyItem(at: assets, to: destination.appendingPathComponent("assets"))
++            try copy("package.json", isDirectory: false)
++            for command in built { try copy("\(command.name).js", isDirectory: false) }
++            for folder in ["assets", "node_modules"] {
++                let item = source.appendingPathComponent(folder)
++                // A dangling symlink must not be treated as an absent optional folder.
++                if fm.fileExists(atPath: item.path) || (try? fm.destinationOfSymbolicLink(atPath: item.path)) != nil {
++                    try copy(folder, isDirectory: true)
++                }
++            }
++            try restoreExecutablePermissions(in: stage)
++            let stagedManifest = try ExtensionManifest.load(directory: stage)
++            guard stagedManifest == manifest else {
++                throw InstallError.unsafePackage("Manifest changed during installation")
++            }
++
++            // Refuse to replace a different package with a colliding flattened name. A broken
++            // or linked destination is not ours to delete automatically.
++            let existing = fm.fileExists(atPath: destination.path)
++            if (try? fm.destinationOfSymbolicLink(atPath: destination.path)) != nil {
++                throw InstallError.unsafePackage("Install destination is a symbolic link")
+             }
+-            let nodeModules = source.appendingPathComponent("node_modules")
+-            if fm.fileExists(atPath: nodeModules.path) {
+-                try fm.copyItem(
+-                    at: nodeModules, to: destination.appendingPathComponent("node_modules"))
++            if existing {
++                let old = try ExtensionManifest.load(directory: destination)
++                guard old.name == manifest.name else {
++                    throw InstallError.unsafePackage("Install destination belongs to another extension")
++                }
+             }
+-            try restoreExecutablePermissions(in: destination)
++            // RENAME_SWAP exchanges two directory entries atomically; even a process crash
++            // leaves one complete package at destination. On unsupported filesystems fail
++            // closed, rather than deleting the working directory and attempting a second move.
++            let flags = UInt32(existing ? RENAME_SWAP : RENAME_EXCL)
++            let result = stage.path.withCString { from in
++                destination.path.withCString { to in
++                    renameatx_np(AT_FDCWD, from, AT_FDCWD, to, flags)
++                }
++            }
++            guard result == 0 else {
++                let code = errno
++                throw NSError(domain: NSPOSIXErrorDomain, code: Int(code))
++            }
++            // After a swap, stage contains the previous package. The defer removes only that
++            // hidden directory, not the new package or extension-data/preferences.
++            return InstalledExtension(manifest: stagedManifest, directory: destination)
++        } catch let error as InstallError {
++            throw error
+         } catch {
+             throw InstallError.copyFailed(error.localizedDescription)
+         }
++    }
++
++    /// A package-relative path, never an absolute path, traversal, hidden staging name or control byte.
++    private static func safeRelativeName(_ name: String) -> Bool {
++        !name.isEmpty && !name.contains("\\") && !name.unicodeScalars.contains {
++            CharacterSet.controlCharacters.contains($0)
++        } && name.split(separator: "/", omittingEmptySubsequences: false).allSatisfy {
++            !$0.isEmpty && $0 != "." && $0 != ".."
++        }
++    }
+ 
+-        // Re-read from the install location so the returned value points at the copy.
+-        let installedManifest = try ExtensionManifest.load(directory: destination)
+-        return InstalledExtension(manifest: installedManifest, directory: destination)
++    /// This iteration accepts self-contained prebuilt payloads, not symlinks or special files.
++    /// Check both source and staged copy before restoring executable bits or swapping directories.
++    private static func validatePayload(_ item: URL, expectDirectory: Bool) throws {
++        let fm = FileManager.default
++        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
++        func check(_ url: URL, directory: Bool? = nil) throws {
++            let value = try url.resourceValues(forKeys: keys)
++            guard value.isSymbolicLink != true,
++                  value.isDirectory == true || value.isRegularFile == true,
++                  directory == nil || value.isDirectory == directory else {
++                throw InstallError.unsafePackage("Unsupported payload item: \(url.lastPathComponent)")
++            }
++        }
++        try check(item, directory: expectDirectory)
++        guard expectDirectory else { return }
++        var pending = [item]
++        while let directory = pending.popLast() {
++            let entries = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys))
++            for entry in entries {
++                try check(entry)
++                if try entry.resourceValues(forKeys: keys).isDirectory == true {
++                    pending.append(entry)
++                }
++            }
++        }
+     }
+ 
+     /// Both paths it owns: nothing else collects the scratch dir, and the dialog promises it goes.
+diff --git a/Tinycast/Features/WindowManagement/Settings/WindowManagementSettingsView.swift b/Tinycast/Features/WindowManagement/Settings/WindowManagementSettingsView.swift
+index e73cdcaf949b829dcf3f12bb5ffa947ebe4f78c7..4d72fb0cb1c1afd36c0cf6f27499eefb49f73a23 100644
+--- a/Tinycast/Features/WindowManagement/Settings/WindowManagementSettingsView.swift
++++ b/Tinycast/Features/WindowManagement/Settings/WindowManagementSettingsView.swift
+@@ -7,6 +7,8 @@ struct WindowManagementSettingsView: View {
+     @State private var pendingDeletion: WindowLayout?
+     @State private var customSizeEdit: CustomWindowSizeEditRequest?
+     @State private var chosenPreset: WindowShortcutPreset?
++    @State private var managerStatus = ""
++    @State private var managerCheck = 0
+     @AppStorage(SharedWindowManagerSelection.defaultsKey)
+     private var sharedManagerMode = SharedWindowManagerSelection.automatic.rawValue
+ 
+@@ -39,6 +41,12 @@ struct WindowManagementSettingsView: View {
+         }
+         .formStyle(.grouped)
+         .settingsScrollTarget(.windowManagement)
++        .task(id: "\(sharedManagerMode):\(managerCheck)") {
++            managerStatus = "Checking window manager…"
++            let status = await SharedWindowManagerBridge.connectionStatus()
++            guard !Task.isCancelled else { return }
++            managerStatus = status
++        }
+         .onChange(of: sharedManagerMode) { _, _ in
+             guard case .native = SharedWindowManagerBridge.resolve() else {
+                 core.windowLayoutCoordinator.suspendRunsForSharedManager()
+@@ -76,9 +84,16 @@ struct WindowManagementSettingsView: View {
+                     Text(manager.title).tag(manager.rawValue)
+                 }
+             }
+-            Text("Automatic follows StableBar's configured AeroSpace or yabai workspace source. "
+-                 + "Tiled windows are changed through that manager; custom pixel layouts and Rooms "
+-                 + "are limited to native mode. Floating windows keep SpeechCast sizing.")
++            LabeledContent("Connection") {
++                VStack(alignment: .trailing, spacing: 4) {
++                    Text(managerStatus).font(.caption).foregroundStyle(.secondary)
++                    Button("Check again") { managerCheck += 1 }
++                }
++            }
++            Text("Automatic follows a configured StableBar manager, or detects a single running tiler. "
++                 + "Rooms and custom layouts require native mode. Native pixel sizing in external mode "
++                 + "is available only for verified floating windows in AeroSpace and yabai. "
++                 + "Assign a shortcut to only one app; SpeechCast does not change external bindings.")
+                 .font(.caption).foregroundStyle(.secondary)
+ 
+             Picker(selection: $settings.windowCycle) {
+diff --git a/Tinycast/Features/WindowManagement/UI/WindowCommandCoordinator.swift b/Tinycast/Features/WindowManagement/UI/WindowCommandCoordinator.swift
+index 06cfd0b2ddf4fd05a5c0f0cf3f95847b00c2dac3..284011095e1ff7927b62b01c79c0c5efc1403ecf 100644
+--- a/Tinycast/Features/WindowManagement/UI/WindowCommandCoordinator.swift
++++ b/Tinycast/Features/WindowManagement/UI/WindowCommandCoordinator.swift
+@@ -3,7 +3,7 @@ import Darwin
+ 
+ /// Select the same window-manager process that StableBar uses, not a second tiler.
+ enum SharedWindowManagerSelection: String, CaseIterable, Identifiable {
+-    case automatic, native, aerospace, yabai
++    case automatic, native, aerospace, yabai, rift, omniwm, kiwidesk
+ 
+     static let defaultsKey = "speechcast.windowManager.provider"
+     var id: String { rawValue }
+@@ -13,98 +13,76 @@ enum SharedWindowManagerSelection: String, CaseIterable, Identifiable {
+         case .native: "SpeechCast (Accessibility)"
+         case .aerospace: "AeroSpace"
+         case .yabai: "yabai"
++        case .rift: "Rift"
++        case .omniwm: "OmniWM"
++        case .kiwidesk: "KiwiDesk"
+         }
+     }
+ }
+ 
+-/// Small, allowlisted CLI adapter. StableBar continues to own only its UI; both
+-/// apps talk to the *same running* AeroSpace/yabai process and its workspaces.
+-@MainActor
+-enum SharedWindowManagerBridge {
+-    enum Backend: String { case aerospace, yabai }
+-    enum Resolution {
+-        case native
+-        case external(Backend, executable: String)
+-        case unavailable(String)
+-    }
++/// The CLI executable names deliberately differ from workspaceSource for Rift and OmniWM.
++enum SharedWindowManagerBackend: String, CaseIterable, Sendable {
++    case aerospace, yabai, rift, omniwm, kiwidesk
+ 
+-    static func resolve() -> Resolution {
+-        let selected = SharedWindowManagerSelection(
+-            rawValue: UserDefaults.standard.string(forKey: SharedWindowManagerSelection.defaultsKey) ?? "automatic"
+-        ) ?? .automatic
+-        switch selected {
+-        case .native: return .native
+-        case .aerospace: return resolve(.aerospace)
+-        case .yabai: return resolve(.yabai)
+-        case .automatic:
+-            // StableBar's explicit workspaceSource takes precedence over an incidental
+-            // background window manager. Its other sources are not emulated here.
+-            if let configured = stableBarSource() {
+-                switch configured {
+-                case "aerospace": return resolve(.aerospace)
+-                case "yabai": return resolve(.yabai)
+-                case "spaces": return .native
+-                default: return .unavailable("StableBar uses \(configured). Select a compatible manager or native mode.")
+-                }
+-            }
+-            if isRunning(.aerospace) { return resolve(.aerospace) }
+-            if isRunning(.yabai) { return resolve(.yabai) }
+-            return .native
++    var cliName: String {
++        switch self {
++        case .rift: "rift-cli"
++        case .omniwm: "omniwmctl"
++        default: rawValue
+         }
+     }
+ 
+-    private static func resolve(_ backend: Backend) -> Resolution {
+-        guard isRunning(backend) else {
+-            return .unavailable("\(backend.rawValue) is not running. Window geometry was not changed.")
++    var appExecutableName: String? {
++        switch self {
++        case .aerospace: "AeroSpace"
++        case .omniwm: "OmniWM"
++        case .kiwidesk: "KiwiDesk"
++        case .yabai, .rift: nil
+         }
+-        guard let executable = executable(for: backend) else {
+-            return .unavailable("\(backend.rawValue) CLI was not found. Check your PATH or Homebrew installation.")
++    }
++
++    var probe: [String] {
++        switch self {
++        case .aerospace: ["list-workspaces", "--focused"]
++        case .yabai: ["-m", "query", "--spaces", "--space"]
++        case .rift: ["query", "workspaces"]
++        case .omniwm: ["ping"]
++        case .kiwidesk: ["get_state"]
+         }
+-        return .external(backend, executable: executable)
+     }
+ 
+-    private static func stableBarSource() -> String? {
+-        let file = FileManager.default.homeDirectoryForCurrentUser
+-            .appendingPathComponent(".config/stablebar/config.json")
+-        guard let data = try? Data(contentsOf: file),
+-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+-        else { return nil }
+-        return object["workspaceSource"] as? String
++    /// Only the original two backends have a verified focused-window float query here.
++    var permitsNativeFloatingGeometry: Bool { self == .aerospace || self == .yabai }
++}
++
++enum SharedWindowManagerPolicy {
++    typealias Backend = SharedWindowManagerBackend
++
++    enum Choice: Equatable {
++        case native
++        case external(Backend)
++        case unavailable(String)
+     }
+ 
+-    private static func isRunning(_ backend: Backend) -> Bool {
+-        switch backend {
+-        case .aerospace:
+-            return !NSRunningApplication.runningApplications(withBundleIdentifier: "bobko.aerospace").isEmpty
+-        case .yabai:
+-            let capacity = proc_listallpids(nil, 0)
+-            guard capacity > 0 else { return false }
+-            var pids = [pid_t](repeating: 0, count: Int(capacity) + 64)
+-            let count = pids.withUnsafeMutableBytes { proc_listallpids($0.baseAddress, Int32($0.count)) }
+-            let user = getuid()
+-            let size = Int32(MemoryLayout<proc_bsdshortinfo>.size)
+-            return pids.prefix(Int(max(count, 0))).contains { pid in
+-                var info = proc_bsdshortinfo()
+-                guard pid > 0,
+-                      proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, size) == size,
+-                      info.pbsi_uid == user else { return false }
+-                return withUnsafeBytes(of: info.pbsi_comm) {
+-                    String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
+-                } == "yabai"
++    static func choose(
++        _ selection: SharedWindowManagerSelection, stableBarSource: String?, running: Set<Backend>
++    ) -> Choice {
++        if selection == .native { return .native }
++        if selection != .automatic, let backend = Backend(rawValue: selection.rawValue) {
++            return .external(backend)
++        }
++        if let source = stableBarSource?.lowercased(), source != "spaces" {
++            guard let backend = Backend(rawValue: source) else {
++                return .unavailable("StableBar uses \(source). Choose a window manager explicitly.")
+             }
++            return .external(backend)
+         }
+-    }
+-
+-    private static func executable(for backend: Backend) -> String? {
+-        let name = backend.rawValue
+-        let path = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+-            .split(separator: ":").map(String.init)
+-        let dirs = path + ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+-        for directory in dirs {
+-            let candidate = URL(fileURLWithPath: directory).appendingPathComponent(name).path
+-            if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
++        // Spaces is a bar display source, not evidence that no tiler owns the windows.
++        guard running.count <= 1 else {
++            return .unavailable("Multiple window managers are running. Choose one explicitly.")
+         }
+-        return nil
++        if let backend = running.first { return .external(backend) }
++        return .native
+     }
+ 
+     /// Only commands that a tiler owns. In particular, arbitrary half/third
+@@ -144,6 +122,47 @@ enum SharedWindowManagerBridge {
+             case .closeWindow: return ["-m", "window", "--close"]
+             default: return nil
+             }
++        case .rift:
++            switch id {
++            case .previousSpace: return ["execute", "workspace", "prev"]
++            case .nextSpace: return ["execute", "workspace", "next"]
++            case .moveLeft: return ["execute", "layout", "move-node", "left"]
++            case .moveRight: return ["execute", "layout", "move-node", "right"]
++            case .moveUp: return ["execute", "layout", "move-node", "up"]
++            case .moveDown: return ["execute", "layout", "move-node", "down"]
++            case .makeLarger: return ["execute", "window", "resize-grow", "--orientation", "smart"]
++            case .makeSmaller: return ["execute", "window", "resize-shrink", "--orientation", "smart"]
++            case .closeWindow: return ["execute", "window", "close"]
++            default: return nil
++            }
++        case .omniwm:
++            switch id {
++            case .previousSpace: return ["command", "switch-workspace", "prev"]
++            case .nextSpace: return ["command", "switch-workspace", "next"]
++            case .moveLeft: return ["command", "move", "left"]
++            case .moveRight: return ["command", "move", "right"]
++            case .moveUp: return ["command", "move", "up"]
++            case .moveDown: return ["command", "move", "down"]
++            // Dwindle only; Niri has a different, span-based sizing API.
++            case .makeLarger: return ["command", "resize-focused", "grow"]
++            case .makeSmaller: return ["command", "resize-focused", "shrink"]
++            case .toggleFullscreen: return ["command", "toggle-native-fullscreen"]
++            case .closeWindow: return ["command", "close-focused-window"]
++            default: return nil
++            }
++        case .kiwidesk:
++            switch id {
++            case .previousSpace: return ["focus_space_previous"]
++            case .nextSpace: return ["focus_space_next"]
++            case .moveLeft: return ["swap", "left"]
++            case .moveRight: return ["swap", "right"]
++            case .moveUp: return ["swap", "up"]
++            case .moveDown: return ["swap", "down"]
++            case .makeLarger: return ["resize", "x", "50"]
++            case .makeSmaller: return ["resize", "x", "-50"]
++            case .closeWindow: return ["close_window"]
++            default: return nil
++            }
+         }
+     }
+ 
+@@ -154,7 +173,138 @@ enum SharedWindowManagerBridge {
+             return moveWindow ? ["move-node-to-workspace", "--", name] : ["workspace", "--", name]
+         case .yabai:
+             return moveWindow ? ["-m", "window", "--space", name] : ["-m", "space", "--focus", name]
++        case .rift:
++            // Rift indexes workspaces from zero; SpeechCast numbers them from one.
++            return ["execute", "workspace", moveWindow ? "move-window" : "switch", String(index - 1)]
++        case .omniwm:
++            return ["command", moveWindow ? "move-to-workspace" : "switch-workspace", name]
++        case .kiwidesk:
++            return [moveWindow ? "move_to_space" : "focus_space", name]
++        }
++    }
++
++}
++
++/// Small, allowlisted CLI adapter. StableBar owns its UI; both apps talk to the
++/// same running window manager. Never fall back to AX after an external CLI fails.
++@MainActor
++enum SharedWindowManagerBridge {
++    typealias Backend = SharedWindowManagerBackend
++    enum Resolution {
++        case native
++        case external(Backend, executable: String)
++        case unavailable(String)
++    }
++
++    static func resolve() -> Resolution {
++        let selected = SharedWindowManagerSelection(
++            rawValue: UserDefaults.standard.string(forKey: SharedWindowManagerSelection.defaultsKey) ?? "automatic"
++        ) ?? .automatic
++        let running = Set(Backend.allCases.filter { isRunning($0) })
++        switch SharedWindowManagerPolicy.choose(selected, stableBarSource: stableBarSource(), running: running) {
++        case .native: return .native
++        case .external(let backend): return resolve(backend)
++        case .unavailable(let message): return .unavailable(message)
++        }
++    }
++
++    static func connectionStatus() async -> String {
++        switch resolve() {
++        case .native: return "Native Accessibility mode (no external manager selected)."
++        case .unavailable(let message): return message
++        case .external(let backend, let executable):
++            do {
++                _ = try await execute(backend.probe, executable: executable)
++                return "\(backend.rawValue): connected"
++            } catch {
++                return "\(backend.rawValue): \(error.localizedDescription)"
++            }
++        }
++    }
++
++    private static func resolve(_ backend: Backend) -> Resolution {
++        guard isRunning(backend) else {
++            return .unavailable("\(backend.rawValue) is not running. Window geometry was not changed.")
++        }
++        guard let executable = executable(for: backend) else {
++            return .unavailable("\(backend.rawValue) CLI was not found. Check your PATH or Homebrew installation.")
++        }
++        return .external(backend, executable: executable)
++    }
++
++    private static func stableBarSource() -> String? {
++        let file = FileManager.default.homeDirectoryForCurrentUser
++            .appendingPathComponent(".config/stablebar/config.json")
++        guard let data = try? Data(contentsOf: file),
++              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
++        else { return nil }
++        return object["workspaceSource"] as? String
++    }
++
++    private static func isRunning(_ backend: Backend) -> Bool {
++        if backend == .aerospace {
++            return !NSRunningApplication.runningApplications(withBundleIdentifier: "bobko.aerospace").isEmpty
++        }
++        if let appName = backend.appExecutableName {
++            return NSWorkspace.shared.runningApplications.contains {
++                $0.executableURL?.lastPathComponent.caseInsensitiveCompare(appName) == .orderedSame
++                    && !$0.isTerminated
++            }
++        }
++        // yabai and Rift may be launched as per-user background services, without an app bundle.
++        let capacity = proc_listallpids(nil, 0)
++        guard capacity > 0 else { return false }
++        var pids = [pid_t](repeating: 0, count: Int(capacity) + 64)
++        let count = pids.withUnsafeMutableBytes { proc_listallpids($0.baseAddress, Int32($0.count)) }
++        let user = getuid()
++        let size = Int32(MemoryLayout<proc_bsdshortinfo>.size)
++        return pids.prefix(Int(max(count, 0))).contains { pid in
++            var info = proc_bsdshortinfo()
++            guard pid > 0,
++                  proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, size) == size,
++                  info.pbsi_uid == user else { return false }
++            return withUnsafeBytes(of: info.pbsi_comm) {
++                String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
++            } == backend.rawValue
++        }
++    }
++
++    private static func executable(for backend: Backend) -> String? {
++        let fm = FileManager.default
++        let home = fm.homeDirectoryForCurrentUser
++        let name = backend.cliName
++        // Prefer a CLI belonging to the running GUI app rather than a stale Homebrew link.
++        if let appName = backend.appExecutableName {
++            let bundledName = backend == .kiwidesk ? appName : name
++            let runningDirs = NSWorkspace.shared.runningApplications.compactMap { app -> URL? in
++                guard app.executableURL?.lastPathComponent.caseInsensitiveCompare(appName) == .orderedSame
++                else { return nil }
++                return app.executableURL?.deletingLastPathComponent()
++            }
++            for directory in runningDirs {
++                let candidate = directory.appendingPathComponent(bundledName).path
++                if fm.isExecutableFile(atPath: candidate) { return candidate }
++            }
+         }
++        let path = (ProcessInfo.processInfo.environment["PATH"] ?? "")
++            .split(separator: ":").map(String.init).filter { $0.hasPrefix("/") }
++        let dirs = path + ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin",
++                           home.appendingPathComponent(".local/bin").path,
++                           home.appendingPathComponent("bin").path,
++                           home.appendingPathComponent(".cargo/bin").path]
++        for directory in dirs {
++            let candidate = URL(fileURLWithPath: directory).appendingPathComponent(name).path
++            if fm.isExecutableFile(atPath: candidate) { return candidate }
++        }
++        return nil
++    }
++
++    static func command(_ id: WindowCommand.ID, for backend: Backend) -> [String]? {
++        SharedWindowManagerPolicy.command(id, for: backend)
++    }
++
++    static func workspace(_ index: Int, moveWindow: Bool, backend: Backend) -> [String] {
++        SharedWindowManagerPolicy.workspace(index, moveWindow: moveWindow, backend: backend)
+     }
+ 
+     /// Only pixel-geometry commands need to ask whether AX would fight a tiler.
+@@ -167,31 +317,54 @@ enum SharedWindowManagerBridge {
+         }
+     }
+ 
+-    /// No shell interpolation. Reads a small result and times out a stalled CLI.
++    /// No shell interpolation. Private capture files avoid the pipe-buffer deadlock while a
++    /// manager writes a JSON response. Cancellation and timeout stop the CLI, never the manager.
+     static func execute(_ args: [String], executable: String) async throws -> String {
++        try Task.checkCancellation()
++        let fm = FileManager.default
++        let directory = fm.temporaryDirectory.appendingPathComponent("speechcast-wm-\(UUID().uuidString)")
++        try fm.createDirectory(at: directory, withIntermediateDirectories: false,
++                               attributes: [.posixPermissions: 0o700])
++        defer { try? fm.removeItem(at: directory) }
++        let outURL = directory.appendingPathComponent("stdout")
++        let errURL = directory.appendingPathComponent("stderr")
++        guard fm.createFile(atPath: outURL.path, contents: nil, attributes: [.posixPermissions: 0o600]),
++              fm.createFile(atPath: errURL.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
++            throw SharedWindowManagerError.message("Could not capture window manager output")
++        }
++        let stdout = try FileHandle(forWritingTo: outURL)
++        defer { try? stdout.close() }
++        let stderr = try FileHandle(forWritingTo: errURL)
++        defer { try? stderr.close() }
+         let process = Process()
+-        let stdout = Pipe()
+-        let stderr = Pipe()
+         process.executableURL = URL(fileURLWithPath: executable)
+         process.arguments = args
+         process.standardOutput = stdout
+         process.standardError = stderr
++        process.standardInput = FileHandle.nullDevice
+         try process.run()
++        defer {
++            if process.isRunning { process.terminate() }
++        }
+         let deadline = ContinuousClock.now + .seconds(3)
+         while process.isRunning {
+             if ContinuousClock.now >= deadline {
+-                process.terminate()
+                 throw SharedWindowManagerError.message("Window manager CLI timed out")
+             }
+             try await Task.sleep(for: .milliseconds(40))
+         }
+-        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+-        let error = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
++        try Task.checkCancellation()
++        func read(_ url: URL) throws -> String {
++            let handle = try FileHandle(forReadingFrom: url)
++            defer { try? handle.close() }
++            let data = try handle.read(upToCount: 1_048_576) ?? Data()
++            return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
++        }
+         guard process.terminationStatus == 0 else {
+-            throw SharedWindowManagerError.message(error.trimmingCharacters(in: .whitespacesAndNewlines)
+-                .isEmpty ? "Window manager command failed" : error)
++            let error = try read(errURL)
++            throw SharedWindowManagerError.message(error.isEmpty ? "Window manager command failed" : error)
+         }
+-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
++        return try read(outURL)
+     }
+ 
+     static func focusedWindowIsFloating(backend: Backend, executable: String) async throws -> Bool {
+@@ -208,6 +381,10 @@ enum SharedWindowManagerBridge {
+                 throw SharedWindowManagerError.message("Could not read yabai's focused window layout")
+             }
+             return floating
++        case .rift, .omniwm, .kiwidesk:
++            // Unknown is deliberately NOT proof that native frame writes are safe. Commands
++            // documented by these managers still work through their CLI, including resize.
++            return false
+         }
+     }
+ }
+@@ -259,7 +436,7 @@ final class WindowCommandCoordinator {
+         guard settings.windowManagementEnabled, (1...20).contains(number) else { return }
+         switch SharedWindowManagerBridge.resolve() {
+         case .native:
+-            core.showMessage("Choose AeroSpace or yabai to control numbered workspaces", tone: .neutral)
++            core.showMessage("Choose an external window manager to control numbered workspaces", tone: .neutral)
+         case .unavailable(let message): core.showMessage(message, tone: .danger)
+         case .external(let backend, let executable):
+             if paletteCoordinator.isVisible {
+@@ -321,13 +498,21 @@ final class WindowCommandCoordinator {
+                     let floating = try await SharedWindowManagerBridge.focusedWindowIsFloating(
+                         backend: backend, executable: executable)
+                     if floating {
++                        guard self.targetStillFocused(target) else {
++                            self.core.showMessage("Window focus changed; command cancelled", tone: .neutral)
++                            return
++                        }
+                         self.placeWindow(id, target: target, voiceFeedback: voiceFeedback)
+                         return
+                     }
+                 }
++                guard self.targetStillFocused(target) else {
++                    self.core.showMessage("Window focus changed; command cancelled", tone: .neutral)
++                    return
++                }
+                 guard let command else {
+                     self.core.showMessage(
+-                        "This geometry action is unavailable for a tiled window. Use the manager's layout.",
++                        "This action has no safe mapping for the selected manager or current window layout.",
+                         tone: .neutral)
+                     return
+                 }
+@@ -353,7 +538,7 @@ final class WindowCommandCoordinator {
+     }
+ 
+     /// Custom frames still work for floating windows; a managed tile is not resized behind
+-    /// AeroSpace/yabai's back, since that would fight its own layout on every refresh.
++    /// the selected manager's back, since that would fight its layout on every refresh.
+     func runCustomWindowSize(id: UUID) {
+         guard settings.windowManagementEnabled, let size = customSizes.size(id: id) else { return }
+         switch SharedWindowManagerBridge.resolve() {
+@@ -368,7 +553,11 @@ final class WindowCommandCoordinator {
+                 do {
+                     guard try await SharedWindowManagerBridge.focusedWindowIsFloating(
+                         backend: backend, executable: executable) else {
+-                        self.core.showMessage("Custom sizing is available only for floating windows", tone: .neutral)
++                        self.core.showMessage("Custom pixel sizing requires a confirmed floating window in AeroSpace or yabai", tone: .neutral)
++                        return
++                    }
++                    guard self.targetStillFocused(target) else {
++                        self.core.showMessage("Window focus changed; command cancelled", tone: .neutral)
+                         return
+                     }
+                     self.windowMover.perform(size, target: target, gap: CGFloat(self.settings.windowGap))
+@@ -377,6 +566,16 @@ final class WindowCommandCoordinator {
+         }
+     }
+ 
++    private func targetStillFocused(_ target: WindowTarget?) -> Bool {
++        switch (target, WindowTarget.current()) {
++        case (.some(.external(let expected)), .some(.external(let current))):
++            return expected.processIdentifier == current.processIdentifier
++        case (.some(.own(let expected)), .some(.own(let current))):
++            return expected === current
++        default: return false
++        }
++    }
++
+     /// The window to place, read before the palette hides and hands focus back to it.
+     private func handOffTarget() -> WindowTarget? {
+         guard paletteCoordinator.isVisible else { return WindowTarget.current() }
+diff --git a/docs/refactoring/speechcast-iteration-2026-11-26.md b/docs/refactoring/speechcast-iteration-2026-11-26.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..06b5d2b582c418dc2eed41fe0a6d4d9ad1ef4cd2
+--- /dev/null
++++ b/docs/refactoring/speechcast-iteration-2026-11-26.md
+@@ -0,0 +1,72 @@
++# SpeechCast: shared window managers and extension installation
++
++Base: `1tuz/SpeechCast` commit `606e1357357961edabccbf0470e22d339a1b77e4`.
++Apply the extension contract (0025) before 0026. Both are carried in the fork patch queue.
++This is a source patch; it is not a macOS-tested release.
++
++## Window management
++
++Keep the existing WindowCommandCoordinator as the single dispatcher for shortcuts, launcher
++and voice. Automatic mode follows a recognized explicit StableBar workspace source; otherwise
++it selects a single running supported tiler, refuses an ambiguous set, or uses native AX
++when none is running. A StableBar source of `spaces` does not imply that a tiler is absent.
++Explicit selection never silently falls back if the manager is missing or its CLI fails.
++Native mode remains an explicit user choice. No external configuration is rewritten.
++
++| Backend | CLI | Workspaces | Directional movement | Resize |
++| --- | --- | --- | --- | --- |
++| AeroSpace | `aerospace` | Existing switch/move | Existing | Existing |
++| yabai | `yabai` | Existing switch/move | Existing warp | Existing floating AX only |
++| Rift | `rift-cli` | Switch/move, zero-based CLI indices | Move node | Smart grow/shrink |
++| OmniWM | `omniwmctl` | Switch/move | Move | Dwindle grow/shrink |
++| KiwiDesk | `kiwidesk` | Focus/move | Swap | Horizontal delta |
++
++The UI includes a read-only connection check. OmniWM IPC must be enabled; Rift needs its
++workspace support available. CLI paths, arguments and permissions need smoke tests against
++the installed versions. New backends intentionally do not permit arbitrary AX frame changes:
++there is no verified floating-window query implemented for them. Rooms and exact custom
++layouts remain native-only. Unsupported actions fail explicitly. The app does not parse or
++modify another manager's hotkey configuration; assign each chord to one owner.
++The legacy AeroSpace/yabai floating check is retained with a same-application focus guard;
++that guard is not a persistent exact window identifier. There is no new full window-layout
++persistence implementation. The process timeout requests termination of the CLI, not the
++window manager itself.
++
++References for backend command verification:
++- https://github.com/nikitabobko/AeroSpace
++- https://github.com/koekeishiya/yabai
++- https://github.com/acsandmann/rift
++- https://github.com/OmniNull/OmniWM
++- https://github.com/KiwiCanopy/KiwiDesk
++
++## Extensions
++
++Retain optional strict version-1 manifest metadata from the previous contract patch.
++Stage a complete payload in a hidden directory on the same volume, validate it, then publish
++with an exclusive rename or atomically exchange it with the previous version. If staging or
++exchange fails, the previous directory remains in place. Never touch extension user data
++as part of installation. Refuse a flattened-name collision, traversal, symlinks and special
++files in the payload, and incomplete versioned builds. This intentionally rejects legacy
++packages that rely on symlinked assets or dependencies: package them as self-contained files.
++This is a disk-level transaction, not a sandbox or a guarantee of safe live replacement:
++quiescing active extension runtimes, serializing concurrent updates across processes, and
++cleaning up stale hidden stages after a crash remain separate work. The external extensions
++repository, remote registry, browser companion and permission model are not part of this patch.
++
++## Verification
++
++Run on macOS from the patched checkout:
++
++```bash
++./Scripts/run-tests.sh ext-contract-test
++./Scripts/test-shared-window-managers.sh
++./Scripts/test-extension-install-transaction.sh
++./.1tuz/gate.sh
++```
++
++Then build the app with Xcode and verify actual workspace switching and move, keyboard and
++voice entry points, failure when the manager stops, focus restoration, arbitrary-size refusal,
++Floating/Rooms guards, UI selection persistence, and extension upgrades with data retained.
++Test each running manager and a simultaneous-manager configuration. Test fork queue replay
++against the recorded upstream before publishing. The portable policy harness does not prove
++CLI compatibility or UI behavior; the Darwin rename test must run on macOS.
+diff --git a/Scripts/check-settings-search.js b/Scripts/check-settings-search.js
+index b60c8931..ba08c319 100755
+--- a/Scripts/check-settings-search.js
++++ b/Scripts/check-settings-search.js
+@@ -55,6 +55,7 @@ for (const m of catalog.matchAll(/\.init\(\s*\.(\w+),\s*"((?:[^"\\]|\\.)*)"/g))
+   const quoted = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+   const marked =
+     source.includes(`SettingsRowTitle(.${anchor}, "${title}")`) ||
++    source.includes(`SettingsRowTitle(.${anchor}, verbatim: "${title}")`) ||
+     new RegExp(`SettingsFeatureToggleLabel\\(\\s*anchor: \\.${anchor}, title: "${quoted}"`).test(source) ||
+     // A `SettingsRow` renders the pill from its own title.
+     new RegExp(`SettingsRow\\(\\s*title: "${quoted}",[\\s\\S]*?anchor: \\.${anchor}`).test(source) ||
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 4fedd4ea..0fe8f9a0 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -78,13 +78,13 @@ jobs:
+       # one. Nothing here prints a value; only the names of missing secrets.
+       - name: Preflight required secrets
+         env:
+-          P12_BASE64: ${{ secrets.SPEECHCAST_SIGNING_P12_BASE64 }}
+-          P12_PASSWORD: ${{ secrets.SPEECHCAST_SIGNING_P12_PASSWORD }}
++          P12_BASE64: ${{ secrets.SPEECHCAST_SIGNING_P12_BASE64 || secrets.SIGNING_P12_BASE64 }}
++          P12_PASSWORD: ${{ secrets.SPEECHCAST_SIGNING_P12_PASSWORD || secrets.SIGNING_P12_PASSWORD }}
+         run: |
+           set -euo pipefail
+           MISSING=()
+-          [ -n "$P12_BASE64" ] || MISSING+=("SPEECHCAST_SIGNING_P12_BASE64")
+-          [ -n "$P12_PASSWORD" ] || MISSING+=("SPEECHCAST_SIGNING_P12_PASSWORD")
++          [ -n "$P12_BASE64" ] || MISSING+=("SPEECHCAST_SIGNING_P12_BASE64 or SIGNING_P12_BASE64")
++          [ -n "$P12_PASSWORD" ] || MISSING+=("SPEECHCAST_SIGNING_P12_PASSWORD or SIGNING_P12_PASSWORD")
+           if [ "${#MISSING[@]}" -gt 0 ]; then
+             echo "::error::Missing required secrets: ${MISSING[*]}"
+             exit 1
+@@ -95,8 +95,8 @@ jobs:
+       # in Config/signing.conf (and therefore the installer and the updater).
+       - name: Import release signing certificate
+         env:
+-          P12_BASE64: ${{ secrets.SPEECHCAST_SIGNING_P12_BASE64 }}
+-          P12_PASSWORD: ${{ secrets.SPEECHCAST_SIGNING_P12_PASSWORD }}
++          P12_BASE64: ${{ secrets.SPEECHCAST_SIGNING_P12_BASE64 || secrets.SIGNING_P12_BASE64 }}
++          P12_PASSWORD: ${{ secrets.SPEECHCAST_SIGNING_P12_PASSWORD || secrets.SIGNING_P12_PASSWORD }}
+         run: |
+           set -euo pipefail
+           KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+diff --git a/Tinycast/Resources/Localizable.xcstrings b/Tinycast/Resources/Localizable.xcstrings
+index e0ad2c19..42c6b034 100644
+--- a/Tinycast/Resources/Localizable.xcstrings
++++ b/Tinycast/Resources/Localizable.xcstrings
+@@ -2219,65 +2219,6 @@
+         }
+       }
+     },
+-    "%@ is up to date" : {
+-      "extractionState" : "stale",
+-      "localizations" : {
+-        "de" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@ ist auf dem neuesten Stand"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@ is up to date"
+-          }
+-        },
+-        "es" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@ está actualizado"
+-          }
+-        },
+-        "fr" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@ est à jour"
+-          }
+-        },
+-        "ja" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@は最新です"
+-          }
+-        },
+-        "ko" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@은(는) 최신 상태입니다"
+-          }
+-        },
+-        "pt" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@ está atualizado"
+-          }
+-        },
+-        "ru" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@: установлена последняя версия"
+-          }
+-        },
+-        "zh-Hans" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@ 已是最新版本"
+-          }
+-        }
+-      }
+-    },
+     "%@ isn't installed on this Mac." : {
+       "localizations" : {
+         "de" : {
+@@ -27919,65 +27860,6 @@
+         }
+       }
+     },
+-    "Automatic follows StableBar's configured AeroSpace or yabai workspace source. Tiled windows are changed through that manager; custom pixel layouts and Rooms are limited to native mode. Floating windows keep SpeechCast sizing." : {
+-      "extractionState" : "stale",
+-      "localizations" : {
+-        "de" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Automatisch folgt der in StableBar konfigurierten AeroSpace- oder yabai-Workspace-Quelle. Gekachelte Fenster werden über diesen Manager geändert; eigene Pixel-Layouts und Räume sind auf den nativen Modus beschränkt. Schwebende Fenster behalten die SpeechCast-Größen."
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Automatic follows StableBar's configured AeroSpace or yabai workspace source. Tiled windows are changed through that manager; custom pixel layouts and Rooms are limited to native mode. Floating windows keep SpeechCast sizing."
+-          }
+-        },
+-        "es" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Automático sigue la fuente de espacios de AeroSpace o yabai configurada en StableBar. Las ventanas en mosaico se cambian a través de ese gestor; los diseños de píxeles personalizados y las Rooms se limitan al modo nativo. Las ventanas flotantes conservan el tamaño de SpeechCast."
+-          }
+-        },
+-        "fr" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Automatique suit la source d'espaces AeroSpace ou yabai configurée dans StableBar. Les fenêtres en mosaïque sont modifiées via ce gestionnaire ; les dispositions en pixels personnalisées et les Rooms sont limitées au mode natif. Les fenêtres flottantes conservent le dimensionnement de SpeechCast."
+-          }
+-        },
+-        "ja" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "「自動」はStableBarで設定されたAeroSpaceまたはyabaiのワークスペースソースに従います。タイル状のウインドウはそのマネージャ経由で変更され、カスタムピクセルレイアウトとルームはネイティブモード限定です。フローティングウインドウはSpeechCastのサイズ指定を維持します。"
+-          }
+-        },
+-        "ko" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "자동은 StableBar에 구성된 AeroSpace 또는 yabai 워크스페이스 소스를 따릅니다. 타일 윈도우는 해당 매니저를 통해 변경되며, 사용자 지정 픽셀 레이아웃과 룸은 네이티브 모드로 제한됩니다. 플로팅 윈도우는 SpeechCast 크기 조정을 유지합니다."
+-          }
+-        },
+-        "pt" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Automático segue a fonte de espaços do AeroSpace ou yabai configurada no StableBar. Janelas lado a lado são alteradas por esse gerenciador; layouts de pixels personalizados e Rooms ficam limitados ao modo nativo. Janelas flutuantes mantêm o dimensionamento do SpeechCast."
+-          }
+-        },
+-        "ru" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "«Автоматически» использует настроенный в StableBar источник рабочих столов AeroSpace или yabai. Мозаичные окна изменяются через этот менеджер; собственные пиксельные раскладки и комнаты ограничены нативным режимом. Плавающие окна сохраняют размеры SpeechCast."
+-          }
+-        },
+-        "zh-Hans" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "“自动”会遵循 StableBar 中配置的 AeroSpace 或 yabai 工作区来源。平铺窗口通过该管理器更改；自定义像素布局和 Rooms 仅限原生模式。浮动窗口保留 SpeechCast 的尺寸调整。"
+-          }
+-        }
+-      }
+-    },
+     "Automatically" : {
+       "comment" : "Hide a started event automatically",
+       "localizations" : {
+@@ -32452,65 +32334,6 @@
+         }
+       }
+     },
+-    "Cancel dictation" : {
+-      "extractionState" : "stale",
+-      "localizations" : {
+-        "de" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Diktat abbrechen"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Cancel dictation"
+-          }
+-        },
+-        "es" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Cancelar dictado"
+-          }
+-        },
+-        "fr" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Annuler la dictée"
+-          }
+-        },
+-        "ja" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "ディクテーションをキャンセル"
+-          }
+-        },
+-        "ko" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "받아쓰기 취소"
+-          }
+-        },
+-        "pt" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Cancelar ditado"
+-          }
+-        },
+-        "ru" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Отменить диктовку"
+-          }
+-        },
+-        "zh-Hans" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "取消听写"
+-          }
+-        }
+-      }
+-    },
+     "Cancelled" : {
+       "localizations" : {
+         "de" : {
+@@ -34310,6 +34133,64 @@
+         }
+       }
+     },
++    "Check again" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Erneut prüfen"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Check again"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Volver a comprobar"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Vérifier à nouveau"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "再確認する"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "다시 확인"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Verificar novamente"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Проверить ещё раз"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "重新检查"
++          }
++        }
++      }
++    },
+     "Check connection" : {
+       "localizations" : {
+         "de" : {
+@@ -72795,176 +72676,117 @@
+       }
+     },
+     "Install Model in Speech Runtime…" : {
+-      "localizations" : {
+-        "de" : {
+-          "stringUnit" : {
+-            "value" : "Modell in Speech Runtime installieren…",
+-            "state" : "translated"
+-          }
+-        },
+-        "es" : {
+-          "stringUnit" : {
+-            "value" : "Instalar modelo en Speech Runtime…",
+-            "state" : "translated"
+-          }
+-        },
+-        "fr" : {
+-          "stringUnit" : {
+-            "value" : "Installer le modèle dans Speech Runtime…",
+-            "state" : "translated"
+-          }
+-        },
+-        "ja" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime にモデルをインストール…",
+-            "state" : "translated"
+-          }
+-        },
+-        "ko" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime에 모델 설치…",
+-            "state" : "translated"
+-          }
+-        },
+-        "pt" : {
+-          "stringUnit" : {
+-            "value" : "Instalar modelo no Speech Runtime…",
+-            "state" : "translated"
+-          }
+-        },
+-        "ru" : {
+-          "stringUnit" : {
+-            "value" : "Установить модель в Speech Runtime…",
+-            "state" : "translated"
+-          }
+-        },
+-        "zh-Hans" : {
+-          "stringUnit" : {
+-            "value" : "在 Speech Runtime 中安装模型…",
+-            "state" : "translated"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "value" : "Install Model in Speech Runtime…",
+-            "state" : "translated"
+-          }
+-        }
+-      }
+-    },
+-    "Install from GitHub" : {
+       "localizations" : {
+         "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Von GitHub installieren"
++            "value" : "Modell in Speech Runtime installieren…"
+           }
+         },
+         "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Install from GitHub"
++            "value" : "Install Model in Speech Runtime…"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Instalar desde GitHub"
++            "value" : "Instalar modelo en Speech Runtime…"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Installer depuis GitHub"
++            "value" : "Installer le modèle dans Speech Runtime…"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "GitHubからインストール"
++            "value" : "Speech Runtime にモデルをインストール…"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "GitHub에서 설치"
++            "value" : "Speech Runtime에 모델 설치…"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Instalar do GitHub"
++            "value" : "Instalar modelo no Speech Runtime…"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Установить с GitHub"
++            "value" : "Установить модель в Speech Runtime…"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "从 GitHub 安装"
++            "value" : "在 Speech Runtime 中安装模型…"
+           }
+         }
+       }
+     },
+-    "Install that model in Speech Runtime.app" : {
+-      "extractionState" : "stale",
++    "Install from GitHub" : {
+       "localizations" : {
+         "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Dieses Modell in Speech Runtime.app installieren"
++            "value" : "Von GitHub installieren"
+           }
+         },
+         "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Window unchanged"
++            "value" : "Install from GitHub"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Instala ese modelo en Speech Runtime.app"
++            "value" : "Instalar desde GitHub"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Installez ce modèle dans Speech Runtime.app"
++            "value" : "Installer depuis GitHub"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "そのモデルを Speech Runtime.app にインストールしてください"
++            "value" : "GitHubからインストール"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "해당 모델을 Speech Runtime.app에 설치하십시오"
++            "value" : "GitHub에서 설치"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Instale esse modelo no Speech Runtime.app"
++            "value" : "Instalar do GitHub"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Установите эту модель в Speech Runtime.app"
++            "value" : "Установить с GitHub"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "在 Speech Runtime.app 中安装该模型"
++            "value" : "从 GitHub 安装"
+           }
+         }
+       }
+@@ -73724,6 +73546,64 @@
+         }
+       }
+     },
++    "Invalid extension package: %@" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Ungültiges Erweiterungspaket: %@"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Invalid extension package: %@"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Paquete de extensión no válido: %@"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Paquet d’extension invalide : %@"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "拡張機能パッケージが無効です: %@"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "잘못된 확장 프로그램 패키지: %@"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Pacote de extensão inválido: %@"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Недопустимый пакет расширения: %@"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "扩展程序包无效：%@"
++          }
++        }
++      }
++    },
+     "Invalid sign-in response." : {
+       "localizations" : {
+         "de" : {
+@@ -74537,124 +74417,6 @@
+         }
+       }
+     },
+-    "Join %@" : {
+-      "extractionState" : "stale",
+-      "localizations" : {
+-        "de" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@ beitreten"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Join %@"
+-          }
+-        },
+-        "es" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Unirse a %@"
+-          }
+-        },
+-        "fr" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Rejoindre %@"
+-          }
+-        },
+-        "ja" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@に参加"
+-          }
+-        },
+-        "ko" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@ 참가"
+-          }
+-        },
+-        "pt" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Entrar em %@"
+-          }
+-        },
+-        "ru" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Присоединиться: %@"
+-          }
+-        },
+-        "zh-Hans" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "加入 %@"
+-          }
+-        }
+-      }
+-    },
+-    "Join %@?" : {
+-      "extractionState" : "stale",
+-      "localizations" : {
+-        "de" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@ beitreten?"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Join %@?"
+-          }
+-        },
+-        "es" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "¿Unirte a %@?"
+-          }
+-        },
+-        "fr" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Rejoindre %@ ?"
+-          }
+-        },
+-        "ja" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@に参加しますか?"
+-          }
+-        },
+-        "ko" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "%@에 참가하시겠습니까?"
+-          }
+-        },
+-        "pt" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Entrar em %@?"
+-          }
+-        },
+-        "ru" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Присоединиться: %@?"
+-          }
+-        },
+-        "zh-Hans" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "要加入 %@ 吗？"
+-          }
+-        }
+-      }
+-    },
+     "Join Meeting" : {
+       "localizations" : {
+         "de" : {
+@@ -82503,65 +82265,6 @@
+         }
+       }
+     },
+-    "Models are installed and downloaded in Speech Runtime.app. Tinycast starts the runtime it finds and never downloads a model by itself." : {
+-      "extractionState" : "stale",
+-      "localizations" : {
+-        "de" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Modelle werden in Speech Runtime.app installiert und geladen. Tinycast startet die gefundene Runtime und lädt nie selbst ein Modell."
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Window unchanged"
+-          }
+-        },
+-        "es" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Los modelos se instalan y descargan en Speech Runtime.app. Tinycast inicia el runtime que encuentra y nunca descarga un modelo por su cuenta."
+-          }
+-        },
+-        "fr" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Les modèles sont installés et téléchargés dans Speech Runtime.app. Tinycast démarre le runtime qu'il trouve et ne télécharge jamais de modèle lui-même."
+-          }
+-        },
+-        "ja" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "モデルのインストールとダウンロードは Speech Runtime.app で行われます。Tinycast は見つかったランタイムを起動するだけで、モデルを自分でダウンロードすることはありません。"
+-          }
+-        },
+-        "ko" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "모델 설치 및 다운로드는 Speech Runtime.app에서 이루어집니다. Tinycast는 찾은 런타임을 시작할 뿐 모델을 직접 다운로드하지 않습니다."
+-          }
+-        },
+-        "pt" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Os modelos são instalados e descarregados no Speech Runtime.app. O Tinycast inicia o runtime que encontra e nunca descarrega um modelo por si."
+-          }
+-        },
+-        "ru" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Модели устанавливаются и загружаются в Speech Runtime.app. Tinycast запускает найденный рантайм и никогда не скачивает модель сам."
+-          }
+-        },
+-        "zh-Hans" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "模型在 Speech Runtime.app 中安装和下载。Tinycast 会启动它找到的运行时，绝不会自行下载模型。"
+-          }
+-        }
+-      }
+-    },
+     "Models are listed here once %@ is ready." : {
+       "localizations" : {
+         "de" : {
+@@ -120682,65 +120385,6 @@
+         }
+       }
+     },
+-    "Set up…" : {
+-      "extractionState" : "stale",
+-      "localizations" : {
+-        "de" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Einrichten…"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Window unchanged"
+-          }
+-        },
+-        "es" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Configurar…"
+-          }
+-        },
+-        "fr" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Configurer…"
+-          }
+-        },
+-        "ja" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "設定…"
+-          }
+-        },
+-        "ko" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "설정…"
+-          }
+-        },
+-        "pt" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Configurar…"
+-          }
+-        },
+-        "ru" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Настроить…"
+-          }
+-        },
+-        "zh-Hans" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "设置…"
+-          }
+-        }
+-      }
+-    },
+     "Settings" : {
+       "localizations" : {
+         "de" : {
+@@ -126435,118 +126079,59 @@
+       }
+     },
+     "Speech Runtime did not answer within %lld seconds" : {
+-      "localizations" : {
+-        "de" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime hat nicht innerhalb von %lld Sekunden geantwortet",
+-            "state" : "translated"
+-          }
+-        },
+-        "es" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime no respondió en %lld segundos",
+-            "state" : "translated"
+-          }
+-        },
+-        "fr" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime n'a pas répondu sous %lld secondes",
+-            "state" : "translated"
+-          }
+-        },
+-        "ja" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime が%lld秒以内に応答しませんでした",
+-            "state" : "translated"
+-          }
+-        },
+-        "ko" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime이 %lld초 안에 응답하지 않았습니다",
+-            "state" : "translated"
+-          }
+-        },
+-        "pt" : {
+-          "stringUnit" : {
+-            "value" : "O Speech Runtime não respondeu em %lld segundos",
+-            "state" : "translated"
+-          }
+-        },
+-        "ru" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime не ответил за %lld секунд",
+-            "state" : "translated"
+-          }
+-        },
+-        "zh-Hans" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime 在 %lld 秒内未响应",
+-            "state" : "translated"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime did not answer within %lld seconds",
+-            "state" : "translated"
+-          }
+-        }
+-      }
+-    },
+-    "Speech Runtime did not answer within 20 seconds" : {
+-      "extractionState" : "stale",
+       "localizations" : {
+         "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Speech Runtime hat nicht innerhalb von 20 Sekunden geantwortet"
++            "value" : "Speech Runtime hat nicht innerhalb von %lld Sekunden geantwortet"
+           }
+         },
+         "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Window unchanged"
++            "value" : "Speech Runtime did not answer within %lld seconds"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Speech Runtime no respondió en 20 segundos"
++            "value" : "Speech Runtime no respondió en %lld segundos"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Speech Runtime n'a pas répondu sous 20 secondes"
++            "value" : "Speech Runtime n'a pas répondu sous %lld secondes"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Speech Runtime が20秒以内に応答しませんでした"
++            "value" : "Speech Runtime が%lld秒以内に応答しませんでした"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Speech Runtime이 20초 안에 응답하지 않았습니다"
++            "value" : "Speech Runtime이 %lld초 안에 응답하지 않았습니다"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "O Speech Runtime não respondeu em 20 segundos"
++            "value" : "O Speech Runtime não respondeu em %lld segundos"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Speech Runtime не ответил за 20 секунд"
++            "value" : "Speech Runtime не ответил за %lld секунд"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Speech Runtime 在 20 秒内未响应"
++            "value" : "Speech Runtime 在 %lld 秒内未响应"
+           }
+         }
+       }
+@@ -127019,56 +126604,56 @@
+       "localizations" : {
+         "de" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime antwortet nicht. Stattdessen wird die Download-Seite geöffnet.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime antwortet nicht. Stattdessen wird die Download-Seite geöffnet."
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Speech Runtime isn't responding. Opening the download page instead."
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime no responde. Se abrirá la página de descarga en su lugar.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime no responde. Se abrirá la página de descarga en su lugar."
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime ne répond pas. La page de téléchargement s'ouvre à la place.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime ne répond pas. La page de téléchargement s'ouvre à la place."
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime が応答していません。代わりにダウンロードページを開きます。",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime が応答していません。代わりにダウンロードページを開きます。"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime이 응답하지 않습니다. 대신 다운로드 페이지를 엽니다.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime이 응답하지 않습니다. 대신 다운로드 페이지를 엽니다."
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+-            "value" : "O Speech Runtime não está a responder. A abrir a página de transferência em vez disso.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "O Speech Runtime não está a responder. A abrir a página de transferência em vez disso."
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime не отвечает. Вместо этого открывается страница загрузки.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime не отвечает. Вместо этого открывается страница загрузки."
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime 未响应。改为打开下载页面。",
+-            "state" : "translated"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime isn't responding. Opening the download page instead.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime 未响应。改为打开下载页面。"
+           }
+         }
+       }
+@@ -127251,56 +126836,56 @@
+       "localizations" : {
+         "de" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime erkennt Sprache lokal auf diesem Mac. Modelle werden nur in Speech Runtime.app heruntergeladen, mit Ihrer Bestätigung dort — Tinycast lädt nie eines herunter, und ein Modell wird erst geladen, wenn Sie das Diktieren starten.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime erkennt Sprache lokal auf diesem Mac. Modelle werden nur in Speech Runtime.app heruntergeladen, mit Ihrer Bestätigung dort — Tinycast lädt nie eines herunter, und ein Modell wird erst geladen, wenn Sie das Diktieren starten."
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Speech Runtime recognizes speech locally on this Mac. Models are downloaded only in Speech Runtime.app, with your confirmation there — Tinycast never downloads one, and loads a model only when you start dictating."
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime reconoce el habla localmente en este Mac. Los modelos solo se descargan en Speech Runtime.app, con tu confirmación allí — Tinycast nunca descarga ninguno y solo carga un modelo cuando empiezas a dictar.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime reconoce el habla localmente en este Mac. Los modelos solo se descargan en Speech Runtime.app, con tu confirmación allí — Tinycast nunca descarga ninguno y solo carga un modelo cuando empiezas a dictar."
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime reconnaît la parole localement sur ce Mac. Les modèles ne sont téléchargés que dans Speech Runtime.app, avec votre confirmation à cet endroit — Tinycast n'en télécharge jamais et ne charge un modèle que lorsque vous commencez à dicter.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime reconnaît la parole localement sur ce Mac. Les modèles ne sont téléchargés que dans Speech Runtime.app, avec votre confirmation à cet endroit — Tinycast n'en télécharge jamais et ne charge un modèle que lorsque vous commencez à dicter."
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime は、このMac上で音声をローカルに認識します。モデルは Speech Runtime.app でのみ、そちらでの確認のうえダウンロードされます。Tinycast がモデルをダウンロードすることはなく、読み込むのはディクテーションを開始したときだけです。",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime は、このMac上で音声をローカルに認識します。モデルは Speech Runtime.app でのみ、そちらでの確認のうえダウンロードされます。Tinycast がモデルをダウンロードすることはなく、読み込むのはディクテーションを開始したときだけです。"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime은 이 Mac에서 음성을 로컬로 인식합니다. 모델은 Speech Runtime.app에서만, 그곳에서 확인한 뒤 다운로드됩니다. Tinycast는 모델을 다운로드하지 않으며, 받아쓰기를 시작할 때만 모델을 불러옵니다.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime은 이 Mac에서 음성을 로컬로 인식합니다. 모델은 Speech Runtime.app에서만, 그곳에서 확인한 뒤 다운로드됩니다. Tinycast는 모델을 다운로드하지 않으며, 받아쓰기를 시작할 때만 모델을 불러옵니다."
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+-            "value" : "O Speech Runtime reconhece a fala localmente neste Mac. Os modelos só são transferidos no Speech Runtime.app, com a sua confirmação aí — o Tinycast nunca transfere nenhum e só carrega um modelo quando começa a ditar.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "O Speech Runtime reconhece a fala localmente neste Mac. Os modelos só são transferidos no Speech Runtime.app, com a sua confirmação aí — o Tinycast nunca transfere nenhum e só carrega um modelo quando começa a ditar."
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime распознаёт речь локально на этом Mac. Модели загружаются только в Speech Runtime.app и только с Вашим подтверждением там — Tinycast никогда ничего не загружает и подключает модель только когда Вы начинаете диктовку.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime распознаёт речь локально на этом Mac. Модели загружаются только в Speech Runtime.app и только с Вашим подтверждением там — Tinycast никогда ничего не загружает и подключает модель только когда Вы начинаете диктовку."
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime 在这台 Mac 上本地识别语音。模型仅在 Speech Runtime.app 中下载，并在那里经您确认 — Tinycast 从不下载模型，仅在您开始听写时加载模型。",
+-            "state" : "translated"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "value" : "Speech Runtime recognizes speech locally on this Mac. Models are downloaded only in Speech Runtime.app, with your confirmation there — Tinycast never downloads one, and loads a model only when you start dictating.",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime 在这台 Mac 上本地识别语音。模型仅在 Speech Runtime.app 中下载，并在那里经您确认 — Tinycast 从不下载模型，仅在您开始听写时加载模型。"
+           }
+         }
+       }
+@@ -127775,56 +127360,56 @@
+       "localizations" : {
+         "de" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime starten…",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime starten…"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Start Speech Runtime…"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+-            "value" : "Iniciar Speech Runtime…",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Iniciar Speech Runtime…"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+-            "value" : "Démarrer Speech Runtime…",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Démarrer Speech Runtime…"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime を起動…",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime を起動…"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+-            "value" : "Speech Runtime 실행…",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Speech Runtime 실행…"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+-            "value" : "Iniciar o Speech Runtime…",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Iniciar o Speech Runtime…"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+-            "value" : "Запустить Speech Runtime…",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "Запустить Speech Runtime…"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+-            "value" : "启动 Speech Runtime…",
+-            "state" : "translated"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "value" : "Start Speech Runtime…",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "启动 Speech Runtime…"
+           }
+         }
+       }
+@@ -134399,65 +133984,6 @@
+         }
+       }
+     },
+-    "The downloaded app is not signed by the identity this copy was signed with." : {
+-      "extractionState" : "stale",
+-      "localizations" : {
+-        "de" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Die geladene App wurde nicht mit derselben Identität signiert wie diese Kopie."
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "The downloaded app is not signed by the identity this copy was signed with."
+-          }
+-        },
+-        "es" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "La app descargada no está firmada con la misma identidad que esta copia."
+-          }
+-        },
+-        "fr" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "La signature de l’app téléchargée ne correspond pas à celle de la version installée."
+-          }
+-        },
+-        "ja" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "ダウンロードしたAppは、このコピーの署名に使用されたIDで署名されていません。"
+-          }
+-        },
+-        "ko" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "다운로드한 앱이 현재 앱과 동일한 서명자로 서명되지 않았습니다."
+-          }
+-        },
+-        "pt" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "O app baixado não foi assinado pela mesma identidade que assinou esta cópia."
+-          }
+-        },
+-        "ru" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "Загруженное приложение подписано не тем удостоверением, которым подписана эта копия."
+-          }
+-        },
+-        "zh-Hans" : {
+-          "stringUnit" : {
+-            "state" : "translated",
+-            "value" : "下载的 App 并非由此副本所用的身份签名。"
+-          }
+-        }
+-      }
+-    },
+     "The downloaded app is not this build of SpeechCast." : {
+       "localizations" : {
+         "de" : {
+@@ -147811,63 +147337,63 @@
+     },
+     "URL" : {
+       "comment" : "Subtitle on the Open in Browser row for a typed web address",
+-      "shouldTranslate" : false,
+       "localizations" : {
+         "de" : {
+           "stringUnit" : {
+-            "value" : "URL",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "URL"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "URL"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+-            "value" : "URL",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "URL"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+-            "value" : "URL",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "URL"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+-            "value" : "URL",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "URL"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+-            "value" : "URL",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "URL"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+-            "value" : "URL",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "URL"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+-            "value" : "URL",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "URL"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+-            "value" : "URL",
+-            "state" : "translated"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "value" : "URL",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "URL"
+           }
+         }
+-      }
++      },
++      "shouldTranslate" : false
+     },
+     "URL Decode" : {
+       "localizations" : {
+@@ -156715,63 +156241,63 @@
+     },
+     "esc" : {
+       "comment" : "Escape keycap legend; keep it short",
+-      "shouldTranslate" : false,
+       "localizations" : {
+         "de" : {
+           "stringUnit" : {
+-            "value" : "esc",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "esc"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "esc"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+-            "value" : "esc",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "esc"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+-            "value" : "esc",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "esc"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+-            "value" : "esc",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "esc"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+-            "value" : "esc",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "esc"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+-            "value" : "esc",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "esc"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+-            "value" : "esc",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "esc"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+-            "value" : "esc",
+-            "state" : "translated"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "value" : "esc",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "esc"
+           }
+         }
+-      }
++      },
++      "shouldTranslate" : false
+     },
+     "extensions-install-section" : {
+       "localizations" : {
+@@ -156950,63 +156476,63 @@
+       "shouldTranslate" : false
+     },
+     "https://example.com" : {
+-      "shouldTranslate" : false,
+       "localizations" : {
+         "de" : {
+           "stringUnit" : {
+-            "value" : "https://example.com",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "https://example.com"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "https://example.com"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+-            "value" : "https://example.com",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "https://example.com"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+-            "value" : "https://example.com",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "https://example.com"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+-            "value" : "https://example.com",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "https://example.com"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+-            "value" : "https://example.com",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "https://example.com"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+-            "value" : "https://example.com",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "https://example.com"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+-            "value" : "https://example.com",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "https://example.com"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+-            "value" : "https://example.com",
+-            "state" : "translated"
+-          }
+-        },
+-        "en" : {
+-          "stringUnit" : {
+-            "value" : "https://example.com",
+-            "state" : "translated"
++            "state" : "translated",
++            "value" : "https://example.com"
+           }
+         }
+-      }
++      },
++      "shouldTranslate" : false
+     },
+     "in %@" : {
+       "comment" : "A countdown, e.g. “in 5 min”",
+diff --git a/docs/speechcast-distribution.md b/docs/speechcast-distribution.md
+index 25afb491..1758b0bc 100644
+--- a/docs/speechcast-distribution.md
++++ b/docs/speechcast-distribution.md
+@@ -26,6 +26,8 @@ gh secret set SPEECHCAST_SIGNING_P12_PASSWORD --repo 1tuz/SpeechCast < build/sig
+ | `SPEECHCAST_SIGNING_P12_BASE64` | Base64 of the existing password-encrypted `.p12`, including its private key |
+ | `SPEECHCAST_SIGNING_P12_PASSWORD` | The export password for that exact `.p12` |
+ 
++The release workflow accepts the former `SIGNING_P12_BASE64` and `SIGNING_P12_PASSWORD` names during migration. Move their values to the canonical names, then remove the former secrets.
++
+ The workflow's repository `GITHUB_TOKEN` handles release publication. No Apple secrets are required. Former `DEVELOPER_ID_APPLICATION_*`, `APPLE_TEAM_ID` and `APPSTORE_*` secrets are unused and can be removed after migration. Do not regenerate the certificate to configure a missing secret.
+ 
+ For a future explicitly approved signing generation, use the one-time `Scripts/create-signing-certificate.sh` generator. Review its usage and update all public pins together. That is a certificate migration, not routine release preparation. A new certificate cannot update apps that trust only the previous pin.
