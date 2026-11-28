@@ -11,24 +11,26 @@ and voice. Automatic mode follows a recognized explicit StableBar workspace sour
 it selects a single running supported tiler, refuses an ambiguous set, or uses native AX
 when none is running. A StableBar source of `spaces` does not imply that a tiler is absent.
 Explicit selection never silently falls back if the manager is missing or its CLI fails.
-Native mode remains an explicit user choice. No external configuration is rewritten.
+Native geometry is unavailable while any supported manager is running, and multiple
+running managers block window commands. No external configuration is rewritten.
 
 | Backend | CLI | Workspaces | Directional movement | Resize |
 | --- | --- | --- | --- | --- |
 | AeroSpace | `aerospace` | Existing switch/move | Existing | Existing |
-| yabai | `yabai` | Existing switch/move | Existing warp | Existing floating AX only |
+| yabai | `yabai` | Existing switch/move | Existing warp | Not supported |
 | Rift | `rift-cli` | Switch/move, zero-based CLI indices | Move node | Smart grow/shrink |
 | OmniWM | `omniwmctl` | Switch/move | Move | Dwindle grow/shrink |
 | KiwiDesk | `kiwidesk` | Focus/move | Swap | Horizontal delta |
 
 The UI includes a read-only connection check. OmniWM IPC must be enabled; Rift needs its
 workspace support available. CLI paths, arguments and permissions need smoke tests against
-the installed versions. New backends intentionally do not permit arbitrary AX frame changes:
-there is no verified floating-window query implemented for them. Rooms and exact custom
+the installed versions. External backends do not permit arbitrary AX frame changes.
+Rooms and exact custom
 layouts remain native-only. Unsupported actions fail explicitly. The app does not parse or
 modify another manager's hotkey configuration; assign each chord to one owner.
-The legacy AeroSpace/yabai floating check is retained with a same-application focus guard;
-that guard is not a persistent exact window identifier. There is no new full window-layout
+Direct Accessibility geometry is disabled while an external manager is active; the focus
+guard for CLI commands checks the application, not a persistent exact window identifier.
+There is no new full window-layout
 persistence implementation. The process timeout requests termination of the CLI, not the
 window manager itself.
 
