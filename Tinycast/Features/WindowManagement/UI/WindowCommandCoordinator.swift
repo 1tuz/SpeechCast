@@ -51,8 +51,6 @@ enum SharedWindowManagerBackend: String, CaseIterable, Sendable {
         }
     }
 
-    /// Only the original two backends have a verified focused-window float query here.
-    var permitsNativeFloatingGeometry: Bool { self == .aerospace || self == .yabai }
 }
 
 enum SharedWindowManagerPolicy {
@@ -67,7 +65,15 @@ enum SharedWindowManagerPolicy {
     static func choose(
         _ selection: SharedWindowManagerSelection, stableBarSource: String?, running: Set<Backend>
     ) -> Choice {
-        if selection == .native { return .native }
+        guard running.count <= 1 else {
+            return .unavailable("Multiple window managers are running. Stop all but one.")
+        }
+        if selection == .native {
+            guard running.isEmpty else {
+                return .unavailable("A window manager is running. Select it to manage its windows.")
+            }
+            return .native
+        }
         if selection != .automatic, let backend = Backend(rawValue: selection.rawValue) {
             return .external(backend)
         }
@@ -78,9 +84,6 @@ enum SharedWindowManagerPolicy {
             return .external(backend)
         }
         // Spaces is a bar display source, not evidence that no tiler owns the windows.
-        guard running.count <= 1 else {
-            return .unavailable("Multiple window managers are running. Choose one explicitly.")
-        }
         if let backend = running.first { return .external(backend) }
         return .native
     }
@@ -307,16 +310,6 @@ enum SharedWindowManagerBridge {
         SharedWindowManagerPolicy.workspace(index, moveWindow: moveWindow, backend: backend)
     }
 
-    /// Only pixel-geometry commands need to ask whether AX would fight a tiler.
-    static func requiresFloatingCheck(_ id: WindowCommand.ID) -> Bool {
-        switch id {
-        case .previousSpace, .nextSpace, .nextDisplay, .previousDisplay,
-             .toggleFullscreen, .minimize, .closeWindow:
-            return false
-        default: return true
-        }
-    }
-
     /// No shell interpolation. Private capture files avoid the pipe-buffer deadlock while a
     /// manager writes a JSON response. Cancellation and timeout stop the CLI, never the manager.
     static func execute(_ args: [String], executable: String) async throws -> String {
@@ -367,26 +360,6 @@ enum SharedWindowManagerBridge {
         return try read(outURL)
     }
 
-    static func focusedWindowIsFloating(backend: Backend, executable: String) async throws -> Bool {
-        switch backend {
-        case .aerospace:
-            return try await execute(
-                ["list-windows", "--focused", "--format", "%{window-layout}"],
-                executable: executable) == "floating"
-        case .yabai:
-            let output = try await execute(["-m", "query", "--windows", "--window"], executable: executable)
-            guard let data = output.data(using: .utf8),
-                  let window = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let floating = window["is-floating"] as? Bool else {
-                throw SharedWindowManagerError.message("Could not read yabai's focused window layout")
-            }
-            return floating
-        case .rift, .omniwm, .kiwidesk:
-            // Unknown is deliberately NOT proof that native frame writes are safe. Commands
-            // documented by these managers still work through their CLI, including resize.
-            return false
-        }
-    }
 }
 
 private enum SharedWindowManagerError: LocalizedError {
@@ -494,18 +467,6 @@ final class WindowCommandCoordinator {
             try? await Task.sleep(for: .milliseconds(120))
             guard let self else { return }
             do {
-                if SharedWindowManagerBridge.requiresFloatingCheck(id) {
-                    let floating = try await SharedWindowManagerBridge.focusedWindowIsFloating(
-                        backend: backend, executable: executable)
-                    if floating {
-                        guard self.targetStillFocused(target) else {
-                            self.core.showMessage("Window focus changed; command cancelled", tone: .neutral)
-                            return
-                        }
-                        self.placeWindow(id, target: target, voiceFeedback: voiceFeedback)
-                        return
-                    }
-                }
                 guard self.targetStillFocused(target) else {
                     self.core.showMessage("Window focus changed; command cancelled", tone: .neutral)
                     return
@@ -537,34 +498,14 @@ final class WindowCommandCoordinator {
         }
     }
 
-    /// Custom frames still work for floating windows; a managed tile is not resized behind
-    /// the selected manager's back, since that would fight its layout on every refresh.
     func runCustomWindowSize(id: UUID) {
         guard settings.windowManagementEnabled, let size = customSizes.size(id: id) else { return }
         switch SharedWindowManagerBridge.resolve() {
         case .native:
             windowMover.perform(size, target: handOffTarget(), gap: CGFloat(settings.windowGap))
         case .unavailable(let message): core.showMessage(message, tone: .danger)
-        case .external(let backend, let executable):
-            let target = handOffTarget()
-            Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(120))
-                guard let self else { return }
-                do {
-                    guard try await SharedWindowManagerBridge.focusedWindowIsFloating(
-                        backend: backend, executable: executable) else {
-                        self.core.showMessage(
-                            "Custom pixel sizing requires a confirmed floating window in AeroSpace or yabai",
-                            tone: .neutral)
-                        return
-                    }
-                    guard self.targetStillFocused(target) else {
-                        self.core.showMessage("Window focus changed; command cancelled", tone: .neutral)
-                        return
-                    }
-                    self.windowMover.perform(size, target: target, gap: CGFloat(self.settings.windowGap))
-                } catch { self.core.showMessage(error.localizedDescription, tone: .danger) }
-            }
+        case .external:
+            core.showMessage("Custom pixel sizing is unavailable while a window manager is running.", tone: .neutral)
         }
     }
 

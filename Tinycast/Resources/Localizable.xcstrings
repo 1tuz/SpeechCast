@@ -26696,6 +26696,19 @@
         }
       }
     },
+    "Assign each shortcut to only one app to avoid conflicts." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Weise jedes Tastenkürzel nur einer App zu, um Konflikte zu vermeiden." } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Assign each shortcut to only one app to avoid conflicts." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Asigna cada atajo a una sola aplicación para evitar conflictos." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Attribuez chaque raccourci à une seule application pour éviter les conflits." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "競合を避けるため、各ショートカットは1つのアプリにのみ割り当ててください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "충돌을 방지하려면 각 단축키를 하나의 앱에만 할당하세요." } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Atribua cada atalho a apenas um app para evitar conflitos." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Чтобы избежать конфликтов, назначайте каждое сочетание только одному приложению." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "为避免冲突，请将每个快捷键仅分配给一个应用。" } }
+      }
+    },
     "Attach" : {
       "comment" : "Confirm button of the file open panel",
       "localizations" : {

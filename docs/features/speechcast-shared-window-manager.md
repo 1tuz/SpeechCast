@@ -24,15 +24,14 @@ Select **Settings > Window Management > Window manager**:
   choose the provider if automatic detection does not match your active widget.
 - **AeroSpace** or **yabai** requires the existing manager process and its CLI
   installed on PATH or in `/opt/homebrew/bin` or `/usr/local/bin`.
-- **SpeechCast (Accessibility)** keeps the original independent window controls.
+- **SpeechCast (Accessibility)** uses independent window controls only when no supported tiler is running.
 
 When a shared tiler is active, window movement, monitor/workspace changes, close,
-minimize and fullscreen commands go through the manager CLI. Native pixel sizing
-is limited to *floating* windows. For tiled windows, unsupported half/third/preset
-geometry is rejected instead of fighting the manager's layout. Saved pixel layouts,
-rooms and auto-layout-on-app-launch are likewise suspended until native mode is
-selected. StableBar remains the presenter of workspaces; no second tiler or daemon
-is installed.
+minimize and fullscreen commands go through the manager CLI. Unsupported half/third/preset
+geometry and custom pixel sizing are rejected while a tiler runs. Saved pixel layouts,
+rooms and auto-layout-on-app-launch are suspended. If several supported managers run at once,
+SpeechCast refuses window commands until only one remains. StableBar remains the presenter
+of workspaces; no second tiler or daemon is installed. Shortcuts must be assigned to one app.
 
 Voice examples (requires AeroSpace/yabai and existing destination workspace):
 

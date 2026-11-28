@@ -90,10 +90,7 @@ struct WindowManagementSettingsView: View {
                     Button("Check again") { managerCheck += 1 }
                 }
             }
-            Text("Automatic follows a configured StableBar manager, or detects a single running tiler. "
-                 + "Rooms and custom layouts require native mode. Native pixel sizing in external mode "
-                 + "is available only for verified floating windows in AeroSpace and yabai. "
-                 + "Assign a shortcut to only one app; SpeechCast does not change external bindings.")
+            Text("Assign each shortcut to only one app to avoid conflicts.")
                 .font(.caption).foregroundStyle(.secondary)
 
             Picker(selection: $settings.windowCycle) {

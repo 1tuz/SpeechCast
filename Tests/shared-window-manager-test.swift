@@ -8,9 +8,11 @@ struct SharedWindowManagerTests {
         func check(_ condition: @autoclosure () -> Bool, _ message: String) {
             guard condition() else { fatalError(message) }
         }
-        check(
-            Policy.choose(.native, stableBarSource: "rift", running: [.rift]) == .native,
-            "explicit native")
+        check(Policy.choose(.native, stableBarSource: nil, running: []) == .native, "native without tiler")
+        if case .unavailable = Policy.choose(.native, stableBarSource: nil, running: [.aerospace]) {
+        } else {
+            fatalError("native geometry must not fight a running tiler")
+        }
         check(
             Policy.choose(.automatic, stableBarSource: nil, running: []) == .native,
             "no manager")
@@ -23,7 +25,7 @@ struct SharedWindowManagerTests {
                 "Spaces does not override tiler")
             check(
                 Policy.choose(
-                    .automatic, stableBarSource: backend.rawValue, running: Set(Backend.allCases))
+                    .automatic, stableBarSource: backend.rawValue, running: [backend])
                     == .external(backend),
                 "StableBar choice")
             check(
@@ -43,6 +45,12 @@ struct SharedWindowManagerTests {
         if case .unavailable = Policy.choose(.automatic, stableBarSource: nil, running: [.rift, .yabai]) {
         } else {
             fatalError("ambiguous managers")
+        }
+        for selection in [SharedWindowManagerSelection.automatic, .native, .aerospace, .yabai] {
+            if case .unavailable = Policy.choose(selection, stableBarSource: "aerospace", running: [.aerospace, .yabai]) {
+            } else {
+                fatalError("multiple active managers must refuse every selection")
+            }
         }
         if case .unavailable = Policy.choose(.automatic, stableBarSource: "unknown", running: []) {
         } else {
@@ -72,9 +80,6 @@ struct SharedWindowManagerTests {
                 == ["-m", "space", "--focus", "2"],
             "yabai legacy mapping")
         check(Backend.rift.cliName == "rift-cli" && Backend.omniwm.cliName == "omniwmctl", "actual executable names")
-        check(
-            Backend.aerospace.permitsNativeFloatingGeometry && !Backend.rift.permitsNativeFloatingGeometry,
-            "floating policy")
         print("Shared window manager policy: passed")
     }
 }
